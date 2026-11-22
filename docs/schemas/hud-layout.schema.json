@@ -1,0 +1,550 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:hud-player:layout:1",
+  "title": "HUD Layout version 1",
+  "description": "Project layout contract. Full replacement after complete validation. A type occurs at most once. Adding a widget type is additive within version 1: every older document stays valid and loads unchanged; a document using a newer type is rejected whole by older builds.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "widgets"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "widgets": {
+      "type": "array",
+      "maxItems": 24,
+      "items": {
+        "$ref": "#/$defs/widget"
+      }
+    }
+  },
+  "$defs": {
+    "widget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "t",
+        "en",
+        "cx",
+        "cy",
+        "sc",
+        "sp"
+      ],
+      "properties": {
+        "t": {
+          "type": "string",
+          "enum": [
+            "CLOCK",
+            "BATTERY",
+            "RANGE",
+            "TRACK",
+            "TURN",
+            "CHARGE",
+            "TEMP",
+            "DRIVE_MODE",
+            "TIRES",
+            "MOTORS",
+            "SUSP_HEIGHT",
+            "SUSP_STIFF",
+            "POWER_METER",
+            "G_METER",
+            "PEDALS",
+            "SPEED_LIMIT",
+            "CAM_AHEAD",
+            "AVG_SECTION",
+            "AMBUSH_HEAT",
+            "POST_AHEAD",
+            "AMBUSH_OBJ",
+            "SIGN_AHEAD",
+            "LYRIC",
+            "REAR_CAMERA"
+          ]
+        },
+        "en": {
+          "type": "boolean"
+        },
+        "cx": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sc": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 4
+        },
+        "sp": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "CLOCK"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "BATTERY"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "RANGE"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "TRACK"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "TURN"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "CHARGE"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "TEMP"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "DRIVE_MODE"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "TIRES"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "MOTORS"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "SUSP_HEIGHT"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "SUSP_STIFF"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "POWER_METER"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "G_METER"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "PEDALS"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "SPEED_LIMIT"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "CAM_AHEAD"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "AVG_SECTION"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "AMBUSH_HEAT"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "POST_AHEAD"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "AMBUSH_OBJ"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "SIGN_AHEAD"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "LYRIC"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "widgets": {
+          "contains": {
+            "type": "object",
+            "required": [
+              "t"
+            ],
+            "properties": {
+              "t": {
+                "const": "REAR_CAMERA"
+              }
+            }
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    }
+  ]
+}

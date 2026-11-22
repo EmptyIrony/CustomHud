@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CustomHUD · 歌词动效预览</title>
+<style>
+  :root { --bg:#0a0b0e; --panel:#13151a; --line:#23272f; --text:#e9ebef; --dim:#8a909b; --accent:#8fd0ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif; }
+  .wrap { max-width:1120px; margin:0 auto; padding:28px 24px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:650; letter-spacing:.01em; }
+  .sub { color:var(--dim); margin:0 0 18px; }
+  .stage { position:relative; width:100%; aspect-ratio:1024/576; background:#000; border-radius:16px;
+           overflow:hidden; border:1px solid var(--line); box-shadow:0 20px 60px rgba(0,0,0,.45); }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .badge { position:absolute; top:12px; right:12px; font-size:12px; padding:5px 10px; border-radius:999px;
+           background:rgba(20,22,27,.72); border:1px solid rgba(255,255,255,.08); color:var(--dim);
+           backdrop-filter:blur(6px); display:flex; gap:8px; align-items:center; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#3a3f48; transition:background .15s; }
+  .dot.on { background:#5fe08f; box-shadow:0 0 8px #5fe08f; }
+  .caption { position:absolute; left:14px; bottom:10px; font-size:12px; color:#555b66; }
+  .transport { display:flex; gap:8px; margin:14px 0 0; flex-wrap:wrap; align-items:center; }
+  .controls { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:12px; margin-top:14px; }
+  .group { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px 14px; }
+  .group h3 { margin:0 0 9px; font-size:12px; color:var(--dim); font-weight:600; letter-spacing:.06em; }
+  .group p { margin:8px 0 0; font-size:12px; color:var(--dim); }
+  .seg { display:flex; flex-wrap:wrap; gap:6px; }
+  button { font:inherit; color:var(--text); background:#1c1f26; border:1px solid #2b3039; border-radius:9px;
+           padding:7px 12px; cursor:pointer; transition:background .12s, border-color .12s, color .12s; }
+  button:hover { border-color:#3b414c; }
+  button.on { background:var(--accent); border-color:var(--accent); color:#071018; font-weight:600; }
+  button.big { padding:9px 16px; }
+  .spacer { flex:1; }
+  .time { color:var(--dim); font-variant-numeric:tabular-nums; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>HUD 歌词动效预览</h1>
+  <p class="sub">画布就是 HUD 的 1024×576：字号、位置、80% 宽度上限、描边都和车机代码一致，逐字绘制，可以原样移植到 Android Canvas。黑色在 HUD 上就是透明。</p>
+
+  <div class="stage" id="stage">
+    <canvas id="hud"></canvas>
+    <div class="badge"><span class="dot" id="dot"></span><span id="drawInfo">静止：不重绘</span></div>
+    <div class="caption">HUD 1024×576 · 歌词锚点 (50%, 80%)</div>
+  </div>
+
+  <div class="transport">
+    <button class="big" id="play">⏸ 暂停播放</button>
+    <button class="big" id="prev">⏮ 上一句</button>
+    <button class="big" id="next">下一句 ⏭</button>
+    <span class="spacer"></span>
+    <span class="time" id="time">0:00</span>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <h3>动效</h3>
+      <div class="seg" data-key="preset"></div>
+      <p id="presetNote"></p>
+    </div>
+    <div class="group">
+      <h3>慢放（看细节）</h3>
+      <div class="seg" data-key="speed"></div>
+    </div>
+    <div class="group">
+      <h3>行数 / 第二行</h3>
+      <div class="seg" data-key="rows"></div>
+      <div class="seg" data-key="second" style="margin-top:6px"></div>
+    </div>
+    <div class="group">
+      <h3>歌词来源</h3>
+      <div class="seg" data-key="source"></div>
+      <p>蓝牙歌词没有下一句：改成上一句在上、当前句在下。</p>
+    </div>
+    <div class="group">
+      <h3>第二行亮度</h3>
+      <div class="seg" data-key="context"></div>
+    </div>
+    <div class="group">
+      <h3>歌词宽度（最多占 HUD 宽度）</h3>
+      <div class="seg">
+        <button id="wMinus">−5%</button><button id="wValue" class="on">80%</button><button id="wPlus">+5%</button>
+      </div>
+      <p>挡风玻璃两侧被切掉时调小。点中间恢复 80%。</p>
+    </div>
+    <div class="group">
+      <h3>长句拆分（按这句的时间依次显示）</h3>
+      <div class="seg" data-key="split"></div>
+      <div class="seg" data-key="chars" style="margin-top:6px"></div>
+      <p>自动：要缩到 85% 以下才放得下时拆。按字数：超过上面选的字数就拆（英文字母算半个字）。第 7 句是长句示例。</p>
+    </div>
+    <div class="group">
+      <h3>背景</h3>
+      <div class="seg" data-key="bg"></div>
+      <p>“挡风玻璃”按 HUD 的叠加发光方式混合（越黑越透明）。</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- HUD geometry (same numbers as HudCanvasView / LayoutModel) ----------
+  const W = 1024, H = 576;
+  const UNIT = 0.16 * H * 0.5;          // baseUnit of the lyric widget at scale .50
+  const PRIMARY = UNIT * 1.25;          // current line size
+  const SECONDARY_SIZE = 0.72;          // context row relative size
+  const ROW_SPACING = 1.32, LINE_SPACING = 1.18;
+  const MAX_CONTEXT_RATIO = 0.85;
+  const STROKE = 0.035;                 // 加粗
+  const ANCHOR_X = 0.5 * W, ANCHOR_Y = 0.80 * H;
+  const maxW = () => Math.min(W * OPTIONS.width.value / 100, 2 * Math.min(ANCHOR_X, W - ANCHOR_X) - W * 0.04);
+  const FONT = '"PingFang SC","Noto Sans SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",sans-serif';
+
+  // ---------- original sample lyrics (ms) ----------
+  const LYRICS = [
+    [0,     '晚风把路灯一盏一盏点亮',           'The evening wind lights the street lamps one by one'],
+    [3400,  '我们沿着海岸线慢慢地开',           'We drive slowly along the coastline'],
+    [6600,  '收音机里在放那首老歌',             'That old song is playing on the radio'],
+    [9600,  '你说别着急',                       'You said, no hurry'],
+    [11600, '前面还有很长很长的路',             'There is a long, long road ahead'],
+    [14800, '窗外的云 追不上我们',              'The clouds outside cannot catch us'],
+    [17800, '就算整座城市都睡着了，我们的车灯也还亮着，一直开到天亮也没关系', 'Even if the whole city falls asleep, our headlights stay on, all the way till dawn'],
+    [21800, '等红灯的时候 偷偷看你',            'Stealing a glance at you at the red light'],
+    [24800, '这一路 刚好有你',                  'All the way, I happen to have you'],
+  ];
+  const SONG_END = 28600, LEAD_IN = -1800;
+
+  // ---------- presets ----------
+  // glide: rows that stay (next -> current). enter / exit: per-glyph springs, rise in row spacings.
+  const PRESETS = {
+    bounce: { name: '灵动弹入', note: '新句逐字从下方弹起（略微放大回弹、由虚变实），旧句逐字向上飘散；下一句平滑升为当前句。',
+      glide: { w: 13, z: 0.74 },
+      enter: { delay: 90, stagger: 26, w: 15, z: 0.52, rise: 0.55, scaleFrom: 0.55, blurFrom: 6 },
+      exit:  { stagger: 14, w: 17, z: 0.92, rise: 0.45, scaleTo: 0.86, blurTo: 5 } },
+    wave: { name: '轻盈波浪', note: '更克制：逐字依次浮现，几乎不缩放，像一阵波浪从左扫到右。',
+      glide: { w: 12, z: 0.8 },
+      enter: { delay: 60, stagger: 34, w: 13, z: 0.7, rise: 0.35, scaleFrom: 0.92, blurFrom: 3 },
+      exit:  { stagger: 18, w: 15, z: 1.0, rise: 0.3, scaleTo: 0.96, blurTo: 3 } },
+    glide: { name: '丝滑滑动', note: '整行一起：上一版已写进代码的效果（整行滑上、淡入淡出）。',
+      glide: { w: 12, z: 0.78 },
+      enter: { delay: 70, stagger: 0, w: 12, z: 0.78, rise: 0.6, scaleFrom: 1, blurFrom: 0 },
+      exit:  { stagger: 0, w: 14, z: 1.0, rise: 0.6, scaleTo: 1, blurTo: 0 } },
+    bloom: { name: '柔光放大', note: '整行从虚到实、轻微放大回弹出现；离开时放大散开。',
+      glide: { w: 11, z: 0.8 },
+      enter: { delay: 60, stagger: 0, w: 10, z: 0.55, rise: 0.12, scaleFrom: 0.82, blurFrom: 10 },
+      exit:  { stagger: 0, w: 12, z: 1.0, rise: 0.15, scaleTo: 1.1, blurTo: 10 } },
+    cut: { name: '关闭', note: '直接切换，不额外重绘（车上对比闪烁用）。' },
+  };
+
+  const OPTIONS = {
+    preset:  { value: 'bounce', items: Object.fromEntries(Object.entries(PRESETS).map(([k, p]) => [k, p.name])) },
+    speed:   { value: 1, items: { 1: '1×', 0.5: '0.5×', 0.25: '0.25×', 0.1: '0.1×' } },
+    rows:    { value: 2, items: { 2: '两行', 1: '单行' } },
+    second:  { value: 'next', items: { next: '第二行：下一句', tr: '第二行：翻译' } },
+    source:  { value: 'lrc', items: { lrc: 'QQ音乐（LRC）', bt: '蓝牙歌词' } },
+    context: { value: 72, items: { 85: '85%', 72: '72%', 60: '60%', 50: '50%' } },
+    bg:      { value: 'black', items: { black: '纯黑（HUD 实际）', road: '模拟挡风玻璃' } },
+    split:   { value: 'auto', items: { auto: '自动（超宽时）', chars: '按字数', off: '关' } },
+    chars:   { value: 12, items: { 6: '6', 8: '8', 10: '10', 12: '12', 14: '14', 16: '16', 20: '20' } },
+    width:   { value: 80 },
+  };
+
+  // ---------- long-line splitter (port of LyricSplitter.kt) ----------
+  const BREAK_AFTER = ' ，,。.、！!？?；;：:·-—/|）)」』】';
+  const glyphsOf = s => Array.from(s);
+  function unitOf(g) {
+    const c = g.codePointAt(0);
+    if (/\s/.test(g)) return 0.25;
+    if (c < 0x80 && /[A-Za-z0-9]/.test(g)) return 0.5;
+    if (c < 0x80 || BREAK_AFTER.includes(g)) return 0.25;
+    return 1;
+  }
+  const unitsOf = s => glyphsOf(s).reduce((a, g) => a + unitOf(g), 0);
+  const isWord = g => (g.codePointAt(0) < 0x250 && /[\p{L}\p{N}]/u.test(g)) || g === "'";
+  const splitCache = new Map();
+  function measurePrimary(s) { ctx.font = '700 ' + PRIMARY + 'px ' + FONT; return ctx.measureText(s).width; }
+  function splitLine(text) {
+    const mode = OPTIONS.split.value, limit = OPTIONS.chars.value, width = maxW() - PRIMARY * STROKE;
+    const key = mode + '|' + limit + '|' + Math.round(width) + '|' + text;
+    if (splitCache.has(key)) return splitCache.get(key);
+    const glyphs = glyphsOf(text.trim());
+    let pieces = 1;
+    if (glyphs.length >= 4 && mode === 'auto') {
+      const full = measurePrimary(text);
+      if (full * 0.85 > width) pieces = Math.ceil(full * 0.95 / width);
+    } else if (glyphs.length >= 4 && mode === 'chars') {
+      const u = unitsOf(text);
+      if (u > limit + 0.01) pieces = Math.ceil(u / limit);
+    }
+    pieces = Math.min(4, Math.floor(glyphs.length / 2), pieces);
+    let result = [text.trim()];
+    if (pieces >= 2) {
+      const weights = glyphs.map(g => mode === 'auto' ? measurePrimary(g) : unitOf(g));
+      const prefix = [0]; weights.forEach(w => prefix.push(prefix[prefix.length - 1] + w));
+      const total = prefix[prefix.length - 1], size = total / pieces, cuts = [];
+      let prev = 0;
+      for (let k = 1; k < pieces; k++) {
+        const ideal = total * k / pieces;
+        let best = -1, bestCost = Infinity;
+        for (let j = prev + 1; j <= glyphs.length - (pieces - k); j++) {
+          let cost = Math.abs(prefix[j] - ideal) / size;
+          if (!BREAK_AFTER.includes(glyphs[j - 1]) && glyphs[j] !== ' ') cost += 0.35;
+          if (isWord(glyphs[j - 1]) && isWord(glyphs[j])) cost += 2;
+          if (cost < bestCost) { bestCost = cost; best = j; }
+        }
+        if (best <= prev) break;
+        cuts.push(best); prev = best;
+      }
+      result = []; let start = 0;
+      for (const end of [...cuts, glyphs.length]) { const p = glyphs.slice(start, end).join('').trim().replace(/[，,、；;]+$/u, '').trim(); if (p) result.push(p); start = end; }
+    }
+    splitCache.set(key, result);
+    return result;
+  }
+  function pieceStarts(pieces, duration) {
+    const units = pieces.map(p => Math.max(unitsOf(p), 0.5)), total = units.reduce((a, b) => a + b, 0);
+    const d = duration == null || duration <= 0 ? total * 300 : Math.min(duration, total * 420);
+    let acc = 0; return units.map(u => { const s = d * acc / total; acc += u; return s; });
+  }
+  const pieceAt = (starts, elapsed) => starts.reduce((idx, s, i) => s <= elapsed ? i : idx, 0);
+
+  // ---------- springs ----------
+  class Spring {
+    constructor(x, w, z) { this.x = x; this.v = 0; this.t = x; this.w = w; this.z = z; this.wait = 0; }
+    set(t, w, z) { this.t = t; if (w) { this.w = w; this.z = z; } }
+    step(dt) {
+      if (this.wait > 0) { this.wait -= dt; if (this.wait > 0) return; dt = -this.wait; this.wait = 0; }
+      if (this.x === this.t && this.v === 0) return;
+      const h = 1 / 240;
+      while (dt > 0) {
+        const s = Math.min(h, dt);
+        const a = -this.w * this.w * (this.x - this.t) - 2 * this.z * this.w * this.v;
+        this.v += a * s; this.x += this.v * s; dt -= s;
+      }
+      if (Math.abs(this.x - this.t) < 3e-3 && Math.abs(this.v) < 3e-2) { this.x = this.t; this.v = 0; }
+    }
+    get busy() { return this.wait > 0 || this.x !== this.t || this.v !== 0; }
+  }
+
+  // ---------- frame builder (port of LyricFrameBuilder) ----------
+  const STRIDE = 4, UNINDEXED = 1 << 30;
+  const builder = { last: null, prev: null, seq: 0 };
+  const pieceKey = (i, s) => (i * 64 + s) * STRIDE;
+  function buildFrame(cur, index, next, tr, seg = 0, sameLine = false) {
+    const two = OPTIONS.rows.value == 2, slots = two ? 2 : 1;
+    if (index >= 0 || next) {
+      builder.last = null; builder.prev = null;
+      const rows = [];
+      if (cur) rows.push({ key: pieceKey(index, seg), text: cur, slot: 0, primary: true });
+      if (two) {
+        if (OPTIONS.second.value === 'tr' && tr && cur) rows.push({ key: pieceKey(index, 0) + 1, text: tr, slot: 1, primary: false });
+        else if (next) rows.push({ key: sameLine ? pieceKey(index, seg + 1) : pieceKey(index + 1, 0), text: next, slot: 1, primary: false });
+      }
+      return { rows, slots };
+    }
+    if (cur && cur !== builder.last) { if (builder.last) builder.prev = builder.last; builder.last = cur; builder.seq++; }
+    if (!cur) return { rows: [], slots };
+    const key = UNINDEXED + builder.seq * STRIDE;
+    if (!two) return { rows: [{ key, text: cur, slot: 0, primary: true }], slots };
+    const rows = [];
+    if (builder.prev) rows.push({ key: key - STRIDE, text: builder.prev, slot: 0, primary: false });
+    rows.push({ key, text: cur, slot: 1, primary: true });
+    return { rows, slots };
+  }
+
+  // ---------- motion ----------
+  let rows = [], slots = 2, frameSig = '';
+  function preset() { return PRESETS[OPTIONS.preset.value]; }
+
+  function makeRow(r, entering) {
+    const p = preset(), cut = !p.glide;
+    const E = cut ? null : p.enter, X = cut ? null : p.exit, G = cut ? { w: 1, z: 1 } : p.glide;
+    const glyphs = Array.from(r.text).map((ch, i) => {
+      const g = { ch, p: new Spring(entering && !cut ? 0 : 1, E ? E.w : 1, E ? E.z : 1), q: new Spring(0, X ? X.w : 1, X ? X.z : 1) };
+      if (entering && !cut) { g.p.t = 1; g.p.wait = (E.delay + i * E.stagger) / 1000; }
+      return g;
+    });
+    return { key: r.key, text: r.text, primary: r.primary, exiting: false, E, X, glyphs,
+             slot: new Spring(r.slot, G.w, G.z), emph: new Spring(r.primary ? 1 : 0, G.w, G.z) };
+  }
+
+  function applyFrame(f) {
+    const sig = f.slots + '|' + f.rows.map(r => r.key + ':' + r.slot + ':' + r.text).join('|');
+    if (sig === frameSig) return;
+    frameSig = sig;
+    const p = preset();
+    if (!p.glide || f.slots !== slots) { rows = f.rows.map(r => makeRow(r, false)); slots = f.slots; kick(); return; }
+    const live = rows.filter(r => !r.exiting), used = new Set(), out = [];
+    let shift = 0;
+    for (const r of f.rows) {
+      const m = live.find(o => !used.has(o) && o.key === r.key && o.text === r.text);
+      if (m) { if (!shift) shift = r.slot - m.slot.t; used.add(m); }
+    }
+    used.clear();
+    for (const r of f.rows) {
+      const m = live.find(o => !used.has(o) && o.key === r.key && o.text === r.text);
+      if (m) {
+        used.add(m);
+        m.slot.set(r.slot, p.glide.w, p.glide.z);
+        m.emph.set(r.primary ? 1 : 0, p.glide.w, p.glide.z);
+        m.primary = r.primary; out.push(m);
+      } else out.push(makeRow(r, true));
+    }
+    for (const o of live) {
+      if (used.has(o)) continue;
+      o.exiting = true;
+      o.X = p.exit;
+      o.slot.set(o.slot.t + shift, p.glide.w, p.glide.z);
+      o.emph.set(0, p.glide.w, p.glide.z);
+      o.glyphs.forEach((g, i) => { g.q = new Spring(g.q.x, p.exit.w, p.exit.z); g.q.t = 1; g.q.wait = i * p.exit.stagger / 1000; });
+    }
+    rows = [...rows.filter(r => r.exiting), ...out];
+    kick();
+  }
+
+  // ---------- playback ----------
+  let playing = true, time = LEAD_IN, lastIndex = null;
+  function indexAt(t) { let i = -1; for (let k = 0; k < LYRICS.length; k++) if (LYRICS[k][0] <= t) i = k; return i; }
+  function refreshFrame() {
+    if (!playing) { applyFrame({ rows: [], slots: OPTIONS.rows.value == 2 ? 2 : 1 }); return; }
+    const i = indexAt(time);
+    const cur = i >= 0 ? LYRICS[i][1] : null;
+    if (OPTIONS.source.value === 'bt') { applyFrame(buildFrame(cur, -1, null, null)); return; }
+    // Long lines: show the piece due now; the next row is the following piece or the next line's first piece.
+    let current = cur, seg = 0, sameLine = false;
+    let next = LYRICS[i + 1] ? splitLine(LYRICS[i + 1][1])[0] : null;
+    if (cur) {
+      const pieces = splitLine(cur);
+      if (pieces.length > 1) {
+        const end = LYRICS[i + 1] ? LYRICS[i + 1][0] : null;
+        const starts = pieceStarts(pieces, end == null ? null : end - LYRICS[i][0]);
+        seg = pieceAt(starts, time - LYRICS[i][0]);
+        current = pieces[seg];
+        if (seg + 1 < pieces.length) { next = pieces[seg + 1]; sameLine = true; }
+      }
+    }
+    applyFrame(buildFrame(current, i, next, i >= 0 ? LYRICS[i][2] : null, seg, sameLine));
+  }
+
+  // ---------- drawing ----------
+  const cv = document.getElementById('hud'), ctx = cv.getContext('2d');
+  let S = 1, dirty = true;
+  const OFF = 20000;
+  function resize() {
+    const r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    S = cv.width / W; dirty = true;
+    if (frozen) draw();
+  }
+  let frozen = false;
+  new ResizeObserver(resize).observe(cv);
+
+  let bgCache = null;
+  function drawBackground() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+    if (OPTIONS.bg.value !== 'road') return;
+    if (!bgCache || bgCache.width !== cv.width) {
+      bgCache = document.createElement('canvas'); bgCache.width = cv.width; bgCache.height = cv.height;
+      const b = bgCache.getContext('2d'); b.scale(S, S);
+      const sky = b.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, '#0d1424'); sky.addColorStop(0.55, '#1b2236'); sky.addColorStop(0.62, '#2a2230'); sky.addColorStop(1, '#0b0b0f');
+      b.fillStyle = sky; b.fillRect(0, 0, W, H);
+      b.fillStyle = '#121218'; b.beginPath(); b.moveTo(W * .44, H * .6); b.lineTo(W * .56, H * .6); b.lineTo(W * 1.1, H); b.lineTo(-W * .1, H); b.fill();
+      b.strokeStyle = 'rgba(220,220,200,.25)'; b.lineWidth = 3; b.setLineDash([22, 26]);
+      b.beginPath(); b.moveTo(W * .5, H * .62); b.lineTo(W * .5, H); b.stroke();
+      const lights = [[.30, .55, '#ffb35c'], [.36, .57, '#ff6b5c'], [.62, .56, '#ff6b5c'], [.67, .55, '#ffd28a'], [.78, .5, '#9fc7ff'], [.15, .52, '#ffcf7a'], [.88, .53, '#ffcf7a']];
+      for (const [x, y, c] of lights) {
+        const g = b.createRadialGradient(W * x, H * y, 0, W * x, H * y, 26);
+        g.addColorStop(0, c); g.addColorStop(1, 'transparent');
+        b.globalAlpha = .55; b.fillStyle = g; b.fillRect(W * x - 30, H * y - 30, 60, 60);
+      }
+      b.globalAlpha = 1;
+    }
+    ctx.drawImage(bgCache, 0, 0);
+  }
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  function fitted(text, size) {
+    ctx.font = '700 ' + size + 'px ' + FONT;
+    const w = ctx.measureText(text).width + size * STROKE;
+    return w > maxW() ? Math.max(0.3, maxW() / w) : 1;
+  }
+
+  function draw() {
+    drawBackground();
+    const road = OPTIONS.bg.value === 'road';
+    ctx.globalCompositeOperation = road ? 'lighter' : 'source-over';
+    const two = slots > 1;
+    let primary = PRIMARY, secondary = PRIMARY * SECONDARY_SIZE;
+    const cur = rows.find(r => !r.exiting && r.primary);
+    if (two && cur) secondary = Math.min(secondary, PRIMARY * fitted(cur.text, PRIMARY) * MAX_CONTEXT_RATIO);
+    const spacing = two ? (primary + secondary) / 2 * ROW_SPACING : primary * LINE_SPACING;
+    const middle = (slots - 1) / 2, ctxLevel = OPTIONS.context.value / 100;
+
+    for (const row of rows) {
+      const e = clamp01(row.emph.x);
+      let size = lerp(secondary, primary, e);
+      size *= fitted(row.text, size);
+      const cy = ANCHOR_Y + (row.slot.x - middle) * spacing;
+      const level = Math.round(255 * (ctxLevel + (1 - ctxLevel) * e));
+      const color = 'rgb(' + level + ',' + level + ',' + level + ')';
+      ctx.font = '700 ' + size + 'px ' + FONT;
+      ctx.lineJoin = 'round'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      const widths = row.glyphs.map(g => ctx.measureText(g.ch).width);
+      const total = widths.reduce((a, b) => a + b, 0);
+      let gx = ANCHOR_X - total / 2;
+      const E = row.E, X = row.X;
+      const whole = !E || E.stagger === 0;
+      row.glyphs.forEach((g, i) => {
+        const p = g.p.x, q = g.q.x, pa = clamp01(p), qa = clamp01(q);
+        const alpha = pa * (1 - qa);
+        const w = widths[i];
+        if (alpha > 0.004) {
+          const rise = (E ? (1 - p) * E.rise : 0) * spacing - (X ? q * X.rise : 0) * spacing;
+          const sc = (E ? lerp(E.scaleFrom, 1, p) : 1) * (X ? lerp(1, X.scaleTo, q) : 1);
+          const blur = (E ? E.blurFrom * (1 - pa) : 0) + (X ? X.blurTo * qa : 0);
+          const ox = whole ? ANCHOR_X : gx + w / 2, oy = cy;
+          const k = S * Math.max(0.01, sc);
+          ctx.setTransform(k, 0, 0, k, ox * S, (oy + rise) * S);
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = size * STROKE;
+          let lx = gx - ox;
+          if (blur > 0.35) {
+            // Blur via a shadow cast from an off-screen copy (works in every browser; Android: BlurMaskFilter).
+            ctx.shadowColor = color; ctx.shadowBlur = blur * k; ctx.shadowOffsetX = OFF; ctx.shadowOffsetY = 0;
+            lx -= OFF / k;
+          } else { ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowColor = 'transparent'; }
+          ctx.strokeText(g.ch, lx, 0);
+          ctx.fillText(g.ch, lx, 0);
+        }
+        gx += w;
+      });
+    }
+    ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowColor = 'transparent';
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---------- loop ----------
+  const dot = document.getElementById('dot'), info = document.getElementById('drawInfo'), timeEl = document.getElementById('time');
+  let last = performance.now(), animFrames = 0, animStart = 0, wasBusy = false;
+  function kick() { dirty = true; }
+  function busy() {
+    return rows.some(r => r.slot.busy || r.emph.busy || r.glyphs.some(g => g.p.busy || g.q.busy));
+  }
+  function tick(now, simulated) {
+    const dt = Math.min(0.05, (now - last) / 1000) * OPTIONS.speed.value;
+    last = now;
+    if (playing) {
+      time += dt * 1000;
+      if (time > SONG_END) time = LEAD_IN;
+      lastIndex = indexAt(time);
+      refreshFrame(); // deduplicated: only a new line / piece starts a transition
+    }
+    for (const r of rows) { r.slot.step(dt); r.emph.step(dt); r.glyphs.forEach(g => { g.p.step(dt); g.q.step(dt); }); }
+    rows = rows.filter(r => !(r.exiting && r.glyphs.every(g => g.q.x >= 1 && !g.q.busy)));
+    const b = busy();
+    if (b && !wasBusy) { animFrames = 0; animStart = now; }
+    if (b || dirty) { draw(); dirty = false; if (b) animFrames++; }
+    if (b) { info.textContent = '重绘中 · ' + animFrames + ' 帧'; }
+    else if (wasBusy) { info.textContent = '静止：不重绘（上次换句 ' + animFrames + ' 帧 / ' + Math.round(now - animStart) + ' ms）'; }
+    dot.classList.toggle('on', b);
+    wasBusy = b;
+    const t = Math.max(0, time) / 1000;
+    timeEl.textContent = Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
+    if (!simulated) requestAnimationFrame(tick);
+  }
+
+  // ---------- controls ----------
+  function hardRefresh() { frameSig = ''; rows = []; builder.last = builder.prev = null; lastIndex = indexAt(time); refreshFrame(); }
+  document.querySelectorAll('.seg[data-key]').forEach(seg => {
+    const key = seg.dataset.key, opt = OPTIONS[key];
+    for (const [v, label] of Object.entries(opt.items)) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.onclick = () => {
+        opt.value = isNaN(+v) ? v : +v;
+        seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+        if (key === 'preset') document.getElementById('presetNote').textContent = PRESETS[v].note;
+        if (key === 'rows' || key === 'second' || key === 'source') hardRefresh();
+        else refreshFrame();
+        dirty = true;
+      };
+      if (String(opt.value) === v) b.classList.add('on');
+      seg.appendChild(b);
+    }
+  });
+  document.getElementById('presetNote').textContent = PRESETS[OPTIONS.preset.value].note;
+  const wValue = document.getElementById('wValue');
+  function setWidth(v) {
+    OPTIONS.width.value = Math.max(30, Math.min(100, v));
+    wValue.textContent = OPTIONS.width.value + '%';
+    refreshFrame(); dirty = true;
+  }
+  document.getElementById('wMinus').onclick = () => setWidth(OPTIONS.width.value - 5);
+  document.getElementById('wPlus').onclick = () => setWidth(OPTIONS.width.value + 5);
+  wValue.onclick = () => setWidth(80);
+  const playBtn = document.getElementById('play');
+  playBtn.onclick = () => {
+    playing = !playing;
+    playBtn.textContent = playing ? '⏸ 暂停播放' : '▶ 继续播放';
+    refreshFrame();
+  };
+  function seekTo(i) {
+    i = Math.max(-1, Math.min(LYRICS.length - 1, i));
+    time = i < 0 ? LEAD_IN : LYRICS[i][0] + 1;
+    lastIndex = indexAt(time); refreshFrame();
+  }
+  document.getElementById('next').onclick = () => seekTo(indexAt(time) + 1);
+  document.getElementById('prev').onclick = () => seekTo(indexAt(time) - 1);
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') seekTo(indexAt(time) + 1);
+    if (e.key === 'ArrowLeft') seekTo(indexAt(time) - 1);
+    if (e.key === ' ') { e.preventDefault(); playBtn.click(); }
+  });
+
+  resize();
+  refreshFrame();
+  // Debug: #t=5200 simulates to that moment at 60 fps and freezes (for screenshots).
+  const sim = /t=(\d+)/.exec(location.hash);
+  if (sim) {
+    const target = +sim[1] + LEAD_IN;
+    const opts = new URLSearchParams(location.hash.slice(1));
+    for (const k of ['preset', 'rows', 'second', 'source', 'bg', 'split']) if (opts.get(k)) OPTIONS[k].value = opts.get(k);
+    for (const k of ['width', 'chars']) if (opts.get(k)) OPTIONS[k].value = +opts.get(k);
+    if (opts.get('rows')) OPTIONS.rows.value = +opts.get('rows');
+    hardRefresh();
+    let t = performance.now(); last = t;
+    for (let ms = LEAD_IN; ms < target; ms += 1000 / 60) { t += 1000 / 60; tick(t, true); }
+    frozen = true;
+    draw();
+    return;
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

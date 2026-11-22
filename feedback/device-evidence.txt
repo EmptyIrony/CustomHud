@@ -1,0 +1,80 @@
+# 共享目标环境的只读证据摘录
+日期：2026-11-03。采集主体为 CarLight，不是 CustomHUD 或 zHUD 的运行测试。
+已省略与 HUD 集成无关的安装应用列表、设备属性和用户目录。
+
+## 原报告行 6–9
+6: ## identity (EnvReport)  t=202539714
+7: package=dev.carlight.player uid=10128 targetSdk=34
+8: device: Qualcomm Zeekr DHU for arm64 (zeekr_dhu) Android 12 SDK_INT=32
+9: SUPPORTED_ABIS=[arm64-v8a, armeabi-v7a, armeabi] process64bit=true
+
+## 原报告行 16–21
+16: permission android.car.permission.CAR_SPEED granted=false
+17: permission android.car.permission.CAR_POWERTRAIN granted=true
+18: permission android.car.permission.CAR_INFO granted=true
+19: class com.ecarx.xui.adaptapi.car.Car: present (not connected, not called)
+20: class com.ecarx.xui.adaptapi.binder.IConnectable: present (not connected, not called)
+21: class com.ecarx.xui.adaptapi.car.sensor.ISensor: present (not connected, not called)
+
+## 原报告行 74–77
+74: display 2 'HDMI 屏幕' 1024x576 dpi=213 refresh=60.000004
+75: 
+76: ## previous exits of this app  t=202539755
+77: none recorded
+
+## 原报告行 114–116
+114: perm android.car.permission.CAR_POWERTRAIN by=com.android.car level=normal group=null grantedToUs=true
+115: perm android.car.permission.CAR_PROJECTION by=com.android.car level=signature|0x10 group=null grantedToUs=false
+116: perm android.car.permission.CAR_SPEED by=com.android.car level=dangerous group=android.permission-group.LOCATION grantedToUs=false
+
+## 原报告行 250–253
+250: perm com.ecarx.sdk.adaptapi.service.permission.READ by=com.zeekr.carservice level=signature group=null grantedToUs=false
+251: perm com.ecarx.sdk.adaptapi.service.permission.READ by=com.zeekr.exportlogservice level=signature group=null grantedToUs=false
+252: perm com.ecarx.sdk.adaptapi.service.permission.WRITE by=com.zeekr.carservice level=signature group=null grantedToUs=false
+253: perm com.ecarx.sdk.adaptapi.service.permission.WRITE by=com.zeekr.exportlogservice level=signature group=null grantedToUs=false
+
+## 原报告行 4776–4798
+4776: ## ecarx: class resolution  t=202569441
+4777: Car via app loader = present, loader=java.lang.BootClassLoader@be1c6f2
+4778: loader = app class loader (java.lang.BootClassLoader@be1c6f2)
+4779: class com.ecarx.xui.adaptapi.car.Car = present (interface=false)
+4780: class com.ecarx.xui.adaptapi.binder.IConnectable = present (interface=true)
+4781: class com.ecarx.xui.adaptapi.binder.IConnectable$IConnectWatcher = present (interface=true)
+4782: class com.ecarx.xui.adaptapi.car.sensor.ISensor = present (interface=true)
+4783: class com.ecarx.xui.adaptapi.car.sensor.ISensor$ISensorListener = present (interface=true)
+4784: class com.ecarx.xui.adaptapi.car.IConnectable = NO_CLASS java.lang.ClassNotFoundException: com.ecarx.xui.adaptapi.car.IConnectable <- java.lang.ClassNotFoundException: Didn't find class "com.ecarx.xui.adaptapi.car.IConnectable" on path: DexPathList[[zip file "/data/app/~~I5G1pLnkekiD70-YFcofdw==/dev.carlight.player-lTbmS-kmiNlk35gNO3cU8w==/base.apk"],nativeLibraryDirectories=[/data/app/~~I5G1pLnkekiD70-YFcofdw==/dev.carlight.player-lTbmS-kmiNlk35gNO3cU8w==/lib/arm64, /system/lib64, /system_ext/lib64]]
+4785: SUMMARY ECARX SDK 类：5/5 个 v1.1 类型可加载（app class loader (java.lang.BootClassLoader@be1c6f2)）
+4786: 
+4787: ## ecarx: v1.1 type shapes  t=202569442
+4788: class com.ecarx.xui.adaptapi.car.Car mods=public final extends com.ecarx.xui.adaptapi.AdaptAPI
+4789: class com.ecarx.xui.adaptapi.binder.IConnectable mods=public abstract interface interface
+4790:   inner com.ecarx.xui.adaptapi.binder.IConnectable$IConnectWatcher
+4791: class com.ecarx.xui.adaptapi.binder.IConnectable$IConnectWatcher mods=public abstract static interface interface
+4792: class com.ecarx.xui.adaptapi.car.sensor.ISensor mods=public abstract interface interface
+4793:   inner com.ecarx.xui.adaptapi.car.sensor.ISensor$ISensorListener
+4794:   inner com.ecarx.xui.adaptapi.car.sensor.ISensor$SensorType
+4795:   inner com.ecarx.xui.adaptapi.car.sensor.ISensor$EventSensor
+4796:   inner com.ecarx.xui.adaptapi.car.sensor.ISensor$ContinuousSensor
+4797:   inner com.ecarx.xui.adaptapi.car.sensor.ISensor$SensorRate
+4798: class com.ecarx.xui.adaptapi.car.sensor.ISensor$ISensorListener mods=public abstract static interface interface
+
+## 原报告行 4801–4803
+4801: ## ecarx: all SDK classes (names) and constants  t=202569448
+4802: SDK classes listed from /system/framework/ecarx.adaptapi.impl.jar: 918
+4803: SDK class count = 918
+
+## 原报告行 6682–6689
+6682: ## ecarx: create / connect / getSensorManager  t=202570552
+6683: Car.create(Context) not found
+6684: SUMMARY ECARX 连接：没有 Car.create(Context)
+6685: 
+6686: ## android.car (standard path, diagnostic only)  t=202570554
+6687: createCar = ERR TIMEOUT on main thread after 5000ms
+6688: SUMMARY android.car：createCar 失败 ERR TIMEOUT on main thread after 5000ms
+6689: STAGE END full elapsedRealtime=202575555
+
+
+## 显示屏完整列表
+72: display 0 '内置屏幕' 2560x1600 dpi=160 refresh=60.000004
+73: display 1 'HDMI 屏幕' 2560x536 dpi=213 refresh=60.000004
+74: display 2 'HDMI 屏幕' 1024x576 dpi=213 refresh=60.000004

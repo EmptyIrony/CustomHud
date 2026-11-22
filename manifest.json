@@ -1,0 +1,95 @@
+{
+  "name": "CustomHUD Kimi development handoff",
+  "date": "2026-11-03",
+  "status": "unofficial_compatibility_draft",
+  "entry": "KIMI_START.md",
+  "reference_apk": {
+    "path": "reference/zhud-4.10-v4010.apk",
+    "package": "com.zeekr.zhud",
+    "versionName": "4.10",
+    "versionCode": 4010,
+    "hardware_validation": "not_confirmed"
+  },
+  "files": [
+    {
+      "path": "KIMI_START.md",
+      "bytes": 2511,
+      "sha256": "e4a8bb1ad7f4e63d9200c5026bc1ea36c0fe688fad5cf0e11bd6a1b23ffb66c0"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1780,
+      "sha256": "ed98fd4d6d139bad752efd618da568adcce16b49a2a11ff4757b2389c2d1b644"
+    },
+    {
+      "path": "docs/README.md",
+      "bytes": 2728,
+      "sha256": "8126f3ea7748b9ad951bbd0f149187980201fbd28ee5cd67625c5bdd8c6b8118"
+    },
+    {
+      "path": "docs/data-interfaces.md",
+      "bytes": 11213,
+      "sha256": "bd7d63c5dc52924842cceda3086d17d9807230ee0f4f7ecc2284baed9217e0e8"
+    },
+    {
+      "path": "docs/examples/layout-clock.json",
+      "bytes": 161,
+      "sha256": "174073a06cb8372bf9433c867686b64dd9b8db12fb7b08c49da5746b72fbf6fa"
+    },
+    {
+      "path": "docs/examples/layout-full.json",
+      "bytes": 2704,
+      "sha256": "3ee2ce34585d82fbead7d073bba8d556fc28140043e689d32fd7a54c1b884c26"
+    },
+    {
+      "path": "docs/implementation-and-acceptance.md",
+      "bytes": 5933,
+      "sha256": "f6a72c686b4757888037d57135a344a0a849047cb246fd51cbae870f0c1e4b45"
+    },
+    {
+      "path": "docs/layout-and-rendering.md",
+      "bytes": 10048,
+      "sha256": "2c843d27a6e4102f1944d6c963250f8535a324c4c18c7c91b4c67ad4bf6e0525"
+    },
+    {
+      "path": "docs/lifecycle.md",
+      "bytes": 15206,
+      "sha256": "601b14a4877af22235d98be9f5d839bd53bbdc8bc645832094cb54824d4eb2f1"
+    },
+    {
+      "path": "docs/manifest.json",
+      "bytes": 1767,
+      "sha256": "7682141dde81eb1e8dd9bceeecfd99da838e9aa16e61009f9ddde6795827eca8"
+    },
+    {
+      "path": "docs/opening-prompt.md",
+      "bytes": 1957,
+      "sha256": "3154c39a8a2497f47fc8e53a80e896efdbaffe39acd43bc5574b15c432b26bac"
+    },
+    {
+      "path": "docs/platform-interface.md",
+      "bytes": 8179,
+      "sha256": "e36347a949553fcf437fbe05f7b3bf12dcf8891a65983e2957dd6b342ecb308e"
+    },
+    {
+      "path": "docs/schemas/hud-layout.schema.json",
+      "bytes": 10031,
+      "sha256": "3323dbcb88aa1ac14f549037cc3a133c19910a232194aa8d02b8fb644382e4db"
+    },
+    {
+      "path": "feedback/device-evidence.txt",
+      "bytes": 5192,
+      "sha256": "cef950253bfe6adf88349051764f05c81fc5a52ea56477b1725fa3eedd4be54f"
+    },
+    {
+      "path": "feedback/device-feedback.md",
+      "bytes": 5749,
+      "sha256": "eb7692371dad5b28411e4c0acd7d15687899d7f5ed39f5791131132ae6f6828a"
+    },
+    {
+      "path": "reference/zhud-4.10-v4010.apk",
+      "bytes": 9427734,
+      "sha256": "55d3c373e6cdea5560f1c902330b9df2fc9ec8d2735bb9a63abbde97ef18eeba"
+    }
+  ]
+}

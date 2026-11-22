@@ -1,0 +1,405 @@
+package dev.carlight.player;
+
+import android.app.Activity;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.SurfaceTexture;
+import android.os.Bundle;
+import android.os.Process;
+import android.view.Gravity;
+import android.view.Surface;
+import android.view.TextureView;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.Switch;
+import android.widget.TextView;
+
+import dev.carlight.player.camera.ZeekrStreamCamera;
+
+import java.util.ArrayDeque;
+import java.util.Locale;
+
+/**
+ * Camera preview through the Zeekr camera SDK bundled in {@code com.zeekr.stream}: one {@code zeekr:<id>}
+ * channel at a time rendered into a TextureView, with SDK state, timing and frame statistics on screen.
+ * The channel closes whenever this screen leaves the foreground.
+ */
+public final class CameraStreamActivity extends Activity
+        implements ZeekrStreamCamera.Listener, TextureView.SurfaceTextureListener {
+    private static final String[] CHANNEL_LABELS = {"前 201", "后 202", "左 203", "右 204"};
+    private static final String[] CHANNEL_URLS = {"zeekr:201", "zeekr:202", "zeekr:203", "zeekr:204"};
+    /** com.zeekr.stream mirrors the rear-mode cameras horizontally and leaves the front one as is. */
+    private static final boolean[] CHANNEL_MIRROR = {false, true, true, true};
+    private static final String[] CALLBACK_LABELS = {"关", "NV21", "RGBA"};
+    private static final int[] CALLBACK_FORMATS = {
+            ZeekrStreamCamera.CALLBACK_OFF, ZeekrStreamCamera.CALLBACK_NV21, ZeekrStreamCamera.CALLBACK_RGBA};
+    private static final int MAX_EVENTS = 80;
+
+    private final ArrayDeque<String> events = new ArrayDeque<>();
+    private PlayerRuntime rt;
+    private ZeekrStreamCamera camera;
+
+    private TextView statePill;
+    private TextView stateText;
+    private TextView placeholder;
+    private TextView statsText;
+    private TextView eventText;
+    private Ui.Segmented channel;
+    private Ui.Segmented callback;
+    private Switch mirrorSwitch;
+    private Switch graphicBufferSwitch;
+
+    private SurfaceTexture texture;
+    private Surface surface;
+    private int surfaceWidth;
+    private int surfaceHeight;
+    /** TextureView gave its SurfaceTexture back; release it once the camera has closed. */
+    private boolean textureDestroyed;
+    private boolean startWhenReady;
+    private int openChannel = -1;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        rt = ((LightCurtainApp) getApplication()).runtime();
+        camera = new ZeekrStreamCamera(this, this);
+        setContentView(buildUi());
+    }
+
+    @Override
+    protected void onStop() {
+        // Never keep a camera channel open behind another screen (e.g. the system reverse view).
+        if (openChannel >= 0) {
+            camera.close(this::releaseTextureIfDestroyed);
+            openChannel = -1;
+            placeholder.setText("页面离开前台，已停止");
+            placeholder.setVisibility(View.VISIBLE);
+        }
+        startWhenReady = false;
+        super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        camera.release();
+        releaseSurface();
+        if (texture != null) {
+            texture.release();
+            texture = null;
+        }
+        super.onDestroy();
+    }
+
+    private View buildUi() {
+        Ui ui = new Ui(this);
+        statePill = ui.pill("未开始", Ui.TEXT_2);
+        LinearLayout root = ui.screen("摄像头视频流",
+                "com.zeekr.stream 内置 ZeekrCameraManager，经 com.zeekr.camera.service 取流。一次一路，只在 P 挡驻车时测试。",
+                statePill);
+
+        // ---- left: channel, controls, preview, statistics
+        LinearLayout left = ui.vertical();
+        channel = ui.segmented(CHANNEL_LABELS, 4, 1, i -> mirrorSwitch.setChecked(CHANNEL_MIRROR[i]));
+        ui.add(left, channel.view, 0);
+        ui.add(left, ui.row(
+                ui.button("开始", R.drawable.ic_play, Ui.Kind.PRIMARY, v -> start()),
+                ui.button("停止", R.drawable.ic_stop, Ui.Kind.TONAL, v -> stop())), 12);
+        stateText = ui.caption("选择通道后点“开始”");
+        ui.add(left, stateText, 10);
+
+        AspectFrame stage = new AspectFrame(this, 16f / 9f);
+        stage.setBackground(ui.shape(Color.BLACK, 18, Ui.OUTLINE, 1));
+        stage.setClipToOutline(true);
+        TextureView view = new TextureView(this);
+        view.setSurfaceTextureListener(this);
+        stage.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        placeholder = ui.caption("没有画面");
+        placeholder.setGravity(Gravity.CENTER);
+        placeholder.setPadding(ui.dp(24), 0, ui.dp(24), 0);
+        stage.addView(placeholder, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout.LayoutParams stageLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        stageLp.topMargin = ui.dp(12);
+        stageLp.gravity = Gravity.CENTER_HORIZONTAL;
+        left.addView(stage, stageLp);
+
+        statsText = ui.mono("尚未开始", 15);
+        statsText.setTextColor(Ui.TEXT);
+        ui.add(left, ui.panel(statsText), 12);
+
+        // ---- right: options, events, environment
+        LinearLayout right = ui.vertical();
+        LinearLayout options = ui.card("参数", "1600×900 · 30 fps（com.zeekr.stream 对这几路的配置）");
+        mirrorSwitch = ui.toggle(options, "水平镜像", "后 / 左 / 右默认开，前默认关。下次开始时生效", 4);
+        mirrorSwitch.setChecked(CHANNEL_MIRROR[1]);
+        graphicBufferSwitch = ui.toggle(options, "GraphicBuffer 模式",
+                "useGraphicBuffer；dc1eA2 / dc1eA2C 等车型的原应用为关。下次开始时生效", 0);
+        ui.add(options, ui.caption("原始帧回调（native 转换有开销，只看格式时再开；即时生效）"), 8);
+        callback = ui.segmented(CALLBACK_LABELS, 3, 0, i -> camera.setCallbackFormat(CALLBACK_FORMATS[i]));
+        ui.add(options, callback.view, 8);
+        ui.add(right, options, 0);
+
+        LinearLayout evCard = ui.card("事件", "加载耗时、open 参数、SDK 相机 / 渲染回调、错误码");
+        eventText = ui.mono("", 14);
+        eventText.setTextColor(Ui.TEXT);
+        eventText.setTextIsSelectable(true);
+        ui.add(evCard, ui.panel(eventText), 12);
+        ui.add(right, evCard, 16);
+
+        LinearLayout envCard = ui.card("环境", null);
+        TextView env = ui.mono(environment(), 14);
+        env.setTextIsSelectable(true);
+        ui.add(envCard, ui.panel(env), 12);
+        ui.add(right, envCard, 16);
+
+        LinearLayout body = ui.columns(20, new float[]{1.35f, 1f}, left, ui.scroll(right));
+        ui.bodyPadding(body);
+        ui.addFill(root, body, 0);
+        return root;
+    }
+
+    private String environment() {
+        StringBuilder b = new StringBuilder();
+        b.append("本应用 uid=").append(Process.myUid()).append(" 64位=").append(Process.is64Bit()).append('\n');
+        appendPackage(b, ZeekrStreamCamera.TARGET_PACKAGE);
+        appendPackage(b, ZeekrStreamCamera.SERVICE_PACKAGE);
+        return b.toString().trim();
+    }
+
+    private void appendPackage(StringBuilder b, String pkg) {
+        b.append(pkg).append('\n');
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(pkg, 0);
+            ApplicationInfo ai = pi.applicationInfo;
+            b.append("  版本 ").append(pi.versionName).append(" (").append(versionCode(pi)).append(")\n");
+            b.append("  uid=").append(ai.uid).append(" 系统应用=").append((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0)
+                    .append('\n');
+            b.append("  APK ").append(ai.sourceDir).append('\n');
+            b.append("  原生库 ").append(ai.nativeLibraryDir).append('\n');
+        } catch (PackageManager.NameNotFoundException e) {
+            b.append("  未安装\n");
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private static long versionCode(PackageInfo pi) {
+        return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P
+                ? pi.getLongVersionCode() : pi.versionCode;
+    }
+
+    // ---------------------------------------------------------------- controls
+
+    private void start() {
+        if (surface == null) {
+            startWhenReady = true;
+            stateText.setText("画面区域尚未就绪，就绪后自动开始");
+            return;
+        }
+        int ch = channel.selected();
+        ZeekrStreamCamera.Config config = new ZeekrStreamCamera.Config(CHANNEL_URLS[ch], 1600, 900, 30,
+                mirrorSwitch.isChecked(), graphicBufferSwitch.isChecked(), CALLBACK_FORMATS[callback.selected()]);
+        openChannel = ch;
+        placeholder.setText("正在打开 " + CHANNEL_URLS[ch] + "…");
+        placeholder.setVisibility(View.VISIBLE);
+        statsText.setText("等待第一帧…");
+        camera.open(surface, surfaceWidth, surfaceHeight, config);
+    }
+
+    private void stop() {
+        startWhenReady = false;
+        if (openChannel < 0) {
+            return;
+        }
+        openChannel = -1;
+        camera.close(this::releaseTextureIfDestroyed);
+        placeholder.setText("已停止");
+        placeholder.setVisibility(View.VISIBLE);
+    }
+
+    private void releaseTextureIfDestroyed() {
+        if (textureDestroyed && openChannel < 0) {
+            releaseSurface();
+            if (texture != null) {
+                texture.release();
+                texture = null;
+            }
+        }
+    }
+
+    private void releaseSurface() {
+        if (surface != null) {
+            surface.release();
+            surface = null;
+        }
+    }
+
+    // ---------------------------------------------------------------- TextureView
+
+    @Override
+    public void onSurfaceTextureAvailable(SurfaceTexture st, int width, int height) {
+        if (texture != null && texture != st) {
+            releaseSurface();
+            texture.release();
+        }
+        texture = st;
+        textureDestroyed = false;
+        surface = new Surface(st);
+        surfaceWidth = width;
+        surfaceHeight = height;
+        if (startWhenReady) {
+            startWhenReady = false;
+            start();
+        }
+    }
+
+    @Override
+    public void onSurfaceTextureSizeChanged(SurfaceTexture st, int width, int height) {
+        surfaceWidth = width;
+        surfaceHeight = height;
+        if (openChannel >= 0 && surface != null) {
+            camera.updateSurface(surface, width, height);
+        }
+    }
+
+    @Override
+    public boolean onSurfaceTextureDestroyed(SurfaceTexture st) {
+        // Keep the texture alive until the SDK's renderer has let go of it.
+        textureDestroyed = true;
+        if (openChannel >= 0) {
+            openChannel = -1;
+            camera.close(this::releaseTextureIfDestroyed);
+        } else {
+            releaseTextureIfDestroyed();
+        }
+        return false;
+    }
+
+    @Override
+    public void onSurfaceTextureUpdated(SurfaceTexture st) {
+        // Per-frame; nothing to do (render statistics come from the SDK's onDrawFrame).
+    }
+
+    // ---------------------------------------------------------------- ZeekrStreamCamera.Listener
+
+    @Override
+    public void onState(ZeekrStreamCamera.State state, String detail) {
+        int color;
+        switch (state) {
+            case STARTED:
+            case RECONNECTED:
+                color = Ui.SUCCESS;
+                break;
+            case LOADING:
+            case OPENING:
+            case DISCONNECTED:
+                color = Ui.WARNING;
+                break;
+            case ERROR:
+                color = Ui.DANGER;
+                break;
+            default:
+                color = Ui.TEXT_2;
+        }
+        Ui.setPill(statePill, state.name(), color);
+        stateText.setText(detail == null || detail.isEmpty() ? state.name() : state.name() + " · " + detail);
+        stateText.setTextColor(state == ZeekrStreamCamera.State.ERROR ? Ui.DANGER : Ui.TEXT_2);
+        if (state == ZeekrStreamCamera.State.ERROR && openChannel >= 0) {
+            placeholder.setText("失败：" + detail);
+            placeholder.setVisibility(View.VISIBLE);
+        }
+    }
+
+    @Override
+    public void onEvent(String line) {
+        rt.log.info("camera", line);
+        events.addFirst(line);
+        while (events.size() > MAX_EVENTS) {
+            events.removeLast();
+        }
+        eventText.setText(String.join("\n", events));
+    }
+
+    @Override
+    public void onFirstFrame(int cameraIndex, long sinceOpenMs) {
+        if (openChannel >= 0) {
+            placeholder.setVisibility(View.GONE);
+        }
+    }
+
+    @Override
+    public void onCameraError(int cameraIndex, int code, String name) {
+        stateText.setText("相机错误 index=" + cameraIndex + " code=" + code + " " + name);
+    }
+
+    @Override
+    public void onStats(ZeekrStreamCamera.Stats s) {
+        if (openChannel < 0 && s.renderedFrames == 0) {
+            return;
+        }
+        StringBuilder b = new StringBuilder();
+        b.append(openChannel >= 0 ? CHANNEL_URLS[openChannel] : "已停止")
+                .append(String.format(Locale.ROOT, " · 渲染 %d 帧 · %.1f fps · 首帧 %s",
+                        s.renderedFrames, s.renderFps, s.firstFrameMs < 0 ? "—" : s.firstFrameMs + " ms"));
+        b.append(String.format(Locale.ROOT, "%nSurface %d×%d", surfaceWidth, surfaceHeight));
+        if (callback.selected() == 0 && s.rawFrames == 0) {
+            b.append("\n原始帧回调：关");
+        } else {
+            b.append(String.format(Locale.ROOT, "%n原始帧 %d 帧 · %.1f fps · format=%d %s · %d×%d · %d 字节",
+                    s.rawFrames, s.rawFps, s.rawFormat, formatName(s.rawFormat), s.rawWidth, s.rawHeight,
+                    s.rawBytes));
+        }
+        statsText.setText(b);
+    }
+
+    private static String formatName(int f) {
+        switch (f) {
+            case 1: return "YV12";
+            case 2: return "I420";
+            case 3: return "NV21";
+            case 4: return "NV12";
+            case 5: return "RGB";
+            case 6: return "BGR";
+            case 7: return "RGBA";
+            case 8: return "BGRA";
+            case 9: return "UYVY";
+            case 10: return "I422";
+            case 11: return "GRAY";
+            case 12: return "H264";
+            case 13: return "H265";
+            case 14: return "JPEG";
+            case 15: return "HARDWARE_BUFFER";
+            case 16: return "PNG";
+            default: return "";
+        }
+    }
+
+    /** Fits a fixed aspect ratio inside the space it is given, centred. */
+    private static final class AspectFrame extends FrameLayout {
+        private final float aspect;
+
+        AspectFrame(Activity a, float aspect) {
+            super(a);
+            this.aspect = aspect;
+        }
+
+        @Override
+        protected void onMeasure(int widthSpec, int heightSpec) {
+            int w = MeasureSpec.getSize(widthSpec);
+            int h = MeasureSpec.getSize(heightSpec);
+            if (MeasureSpec.getMode(heightSpec) == MeasureSpec.UNSPECIFIED || h == 0) {
+                h = Math.round(w / aspect);
+            } else if (w / (float) h > aspect) {
+                w = Math.round(h * aspect);
+            } else {
+                h = Math.round(w / aspect);
+            }
+            super.onMeasure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY));
+        }
+    }
+}

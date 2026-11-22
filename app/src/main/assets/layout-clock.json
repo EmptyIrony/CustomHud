@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "widgets": [
+    {"t":"CLOCK","en":true,"cx":0.84,"cy":0.50,"sc":0.30,"sp":0.0}
+  ]
+}
