@@ -4,7 +4,7 @@
 
 先阅读：
 
-1. `README.md`
+1. `docs/handoff.md`
 2. `feedback/device-feedback.md` 与 `feedback/device-evidence.txt`
 3. `docs/platform-interface.md`
 4. `docs/lifecycle.md`
