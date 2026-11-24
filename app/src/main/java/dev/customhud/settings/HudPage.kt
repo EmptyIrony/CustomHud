@@ -8,8 +8,9 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import dev.customhud.adapters.CarProps
-import dev.customhud.adapters.EcarxCapabilityProbe
+import dev.customhud.adapters.EcarxVehicleFeed
+import dev.customhud.adapters.VehiclePermissions
+import dev.customhud.data.SignalCapability
 import dev.customhud.camera.CameraPhase
 import dev.customhud.camera.CameraPrefs
 import dev.customhud.camera.CameraWindowLayer
@@ -195,7 +196,7 @@ class HudPage(host: MainActivity) : Page(host) {
             addSpaced(c.row(
                 c.bigButton("悬浮窗设置") { host.openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) },
                 c.bigButton("请求车况权限") {
-                    host.requestPermissions(CarProps.PERMISSIONS.toTypedArray(), MainActivity.REQUEST_PERMISSIONS)
+                    host.requestPermissions(VehiclePermissions.PERMISSIONS.toTypedArray(), MainActivity.REQUEST_PERMISSIONS)
                 },
             ))
         }, 20)
@@ -227,7 +228,7 @@ class HudPage(host: MainActivity) : Page(host) {
                 }.also { modeButtons[mode] = it }
             }
             addSpaced(c.row(*modes.toTypedArray()), 8)
-            addView(c.label("非 P 挡：P 挡不打开相机（默认）。挡位优先用 ECARX 0x200200（与 CarLight 换挡音效相同），android.car GEAR_SELECTION 兜底；都读不到时显示“挡位不可用”，不猜。", Ui.SMALL, Ui.DIM))
+            addView(c.label("非 P 挡：P 挡不打开相机（默认）。挡位优先用 ECARX 0x200200 事件订阅（与 CarLight 换挡音效相同），车况轮询的 0x200200 兜底；都读不到时显示“挡位不可用”，不猜。", Ui.SMALL, Ui.DIM))
             opaqueButton = c.bigButton("") {
                 cameraPrefs.opaque = !cameraPrefs.opaque
                 app.log.add("UI", "rear camera opaque=${cameraPrefs.opaque}")
@@ -466,7 +467,12 @@ class HudPage(host: MainActivity) : Page(host) {
     private fun renderCapabilities() {
         val c = host
         capabilityList.removeAllViews()
-        val items = capabilities.report() + EcarxCapabilityProbe(c).inspect()
+        val items = capabilities.report() + SignalCapability(
+            if (app.ecarx.isConnected) CapabilityStatus.AVAILABLE else CapabilityStatus.NOT_READY,
+            "ECARX 车况连接：${app.ecarx.state()}（HUD 运行或打开探测页“车况”时连接）",
+            android.os.SystemClock.elapsedRealtime(),
+            EcarxVehicleFeed.PROFILE,
+        )
         items.forEach { item ->
             val ok = item.status == CapabilityStatus.AVAILABLE
             capabilityList.addSpaced(c.label("${if (ok) "✓" else "✗"}  ${item.reason}", Ui.SMALL, if (ok) Ui.TEXT else Ui.WARN), 6)

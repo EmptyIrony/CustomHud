@@ -1,6 +1,8 @@
 package dev.customhud.data
 
 import android.os.SystemClock
+import dev.customhud.adapters.MotorActivity
+import dev.customhud.adapters.MotorState
 
 class MockVehicleDataSource : VehicleDataSource {
     override var connection: ConnectionState = ConnectionState.UNAVAILABLE
@@ -36,6 +38,15 @@ class MockVehicleDataSource : VehicleDataSource {
                 VehicleSignal.DRIVE_MODE to value(VehicleSignal.DRIVE_MODE, "COMFORT"),
                 VehicleSignal.LEFT_INDICATOR to value(VehicleSignal.LEFT_INDICATOR, false),
                 VehicleSignal.RIGHT_INDICATOR to value(VehicleSignal.RIGHT_INDICATOR, false),
+                VehicleSignal.MOTOR_ACTIVITY to value(VehicleSignal.MOTOR_ACTIVITY, MotorActivity(MotorState.IDLE, MotorState.DRIVE)),
+                VehicleSignal.ACCELERATION_LONGITUDINAL to value(VehicleSignal.ACCELERATION_LONGITUDINAL, 0.2),
+                VehicleSignal.ACCELERATION_LATERAL to value(VehicleSignal.ACCELERATION_LATERAL, -0.1),
+                VehicleSignal.ACCELERATOR to value(VehicleSignal.ACCELERATOR, 24.0),
+                VehicleSignal.BRAKE to value(VehicleSignal.BRAKE, 0.0),
+                VehicleSignal.TIRE_PRESSURE_FL to value(VehicleSignal.TIRE_PRESSURE_FL, 2.5),
+                VehicleSignal.TIRE_PRESSURE_FR to value(VehicleSignal.TIRE_PRESSURE_FR, 2.5),
+                VehicleSignal.TIRE_PRESSURE_RL to value(VehicleSignal.TIRE_PRESSURE_RL, 2.6),
+                VehicleSignal.TIRE_PRESSURE_RR to value(VehicleSignal.TIRE_PRESSURE_RR, 2.6),
             ),
             connection = connection,
             generation = generation,

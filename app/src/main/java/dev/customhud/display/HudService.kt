@@ -322,7 +322,7 @@ class HudService : Service() {
                 else -> GearReading.unavailable(RearCameraPolicy.ECARX, String.format(Locale.ROOT, "%s：未知值 0x%x", what, raw))
             }
         }
-        val source = EcarxGearSource(this, object : EcarxGearSource.Log {
+        val source = EcarxGearSource(app.ecarx, object : EcarxGearSource.Log {
             override fun info(category: String, message: String) = app.log.add("GEAR", message)
             override fun warn(category: String, message: String) = app.log.add("GEAR", message, "WARN", "ECARX_GEAR")
         }, object : EcarxGearSource.Listener {

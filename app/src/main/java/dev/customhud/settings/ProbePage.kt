@@ -14,10 +14,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.os.SystemClock
 import dev.customhud.BuildConfig
-import dev.customhud.adapters.AndroidCarDataSource
-import dev.customhud.data.DataMode
-import dev.customhud.data.VehicleProfile
-import dev.customhud.data.VehicleSignal
+import dev.customhud.adapters.VEHICLE_ROWS
 import dev.customhud.media.FieldKey
 import dev.customhud.media.FieldValue
 import dev.customhud.media.LyricMode
@@ -58,7 +55,7 @@ class ProbePage(host: MainActivity) : Page(host) {
     private val carStatus = host.label("", Ui.BODY, Ui.ACCENT, bold = true)
     private val carSignals = host.label("", 19f, Ui.TEXT, mono = true)
     private val carProperties = host.label("", Ui.SMALL, Ui.DIM, mono = true)
-    private var carSource: AndroidCarDataSource? = null
+    private var carUnsubscribe: (() -> Unit)? = null
     private var tab = Tab.LIVE
     private val carTick = object : Runnable {
         override fun run() {
@@ -238,50 +235,30 @@ class ProbePage(host: MainActivity) : Page(host) {
         val c = host
         carPanel.addView(c.card().apply {
             addView(carStatus)
-            addSpaced(c.label("直接读取 Android 标准车辆属性（与 HUD 相同的读取方式），每秒刷新。✗ 后面是不可用的原因，可拍照反馈。", Ui.SMALL, Ui.DIM), 6)
+            addSpaced(c.label("ECARX 车况（与 CarLight 相同的接口，与 HUD 共用同一个连接），每秒刷新。✓ 已实车确认；? 只显示原值，单位/含义待确认，HUD 不显示；✗ 后面是读不到的原因。可拍照反馈。", Ui.SMALL, Ui.DIM), 6)
         })
         carPanel.addView(ScrollView(c).apply {
             addView(LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(carSignals)
-                addSpaced(c.sectionTitle("标准属性与权限"), 20)
+                addSpaced(c.sectionTitle("连接与轮询"), 20)
                 addSpaced(carProperties, 8)
             })
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = c.dp(14) })
     }
 
     private fun renderCar() {
-        val source = carSource ?: AndroidCarDataSource(host).also { source ->
-            carSource = source
-            source.open(VehicleProfile("probe-live"), DataMode.DEVICE) { }
-        }
-        carStatus.text = "android.car：${source.statusLine}"
-        val snapshot = source.snapshot()
-        val capabilities = source.capabilities()
-        val now = SystemClock.elapsedRealtime()
-        carSignals.text = CAR_ROWS.joinToString("\n") { (signal, name) ->
-            val value = snapshot.value(signal)
-            val shown = value?.value
-            when {
-                shown != null -> "✓ ${name.padEnd(6, '　')} ${formatValue(shown)}  ← ${value.source.removePrefix("android.car:")}" +
-                    if (!value.isFresh(now)) "（过期）" else ""
-                value?.error != null -> "✗ ${name.padEnd(6, '　')} ${value.error.code}：${value.error.message.take(90)}"
-                else -> "… ${name.padEnd(6, '　')} ${capabilities[signal]?.reason?.take(90) ?: "等待连接"}"
-            }
-        }
-        carProperties.text = source.propertyReport().joinToString("\n")
+        val feed = app.vehicle
+        if (carUnsubscribe == null) carUnsubscribe = feed.subscribe { }
+        carStatus.text = "ECARX：${app.ecarx.state()} · ${feed.status}"
+        carSignals.text = feed.signalLines(CAR_ROWS, SystemClock.elapsedRealtime()).joinToString("\n")
+        carProperties.text = feed.statusLines().joinToString("\n")
     }
 
     private fun closeCar() {
         handler.removeCallbacks(carTick)
-        carSource?.close()
-        carSource = null
-    }
-
-    private fun formatValue(value: Any): String = when (value) {
-        is Double -> String.format(Locale.US, "%.1f", value)
-        is Boolean -> if (value) "是" else "否"
-        else -> value.toString()
+        carUnsubscribe?.invoke()
+        carUnsubscribe = null
     }
 
     private fun buildLivePanel() {
@@ -479,24 +456,6 @@ class ProbePage(host: MainActivity) : Page(host) {
     private companion object {
         const val ZEEKR_REFRESH_MS = 300L
         const val LIVE_REFRESH_MS = 700L
-        val CAR_ROWS = listOf(
-            VehicleSignal.SPEED to "车速 km/h",
-            VehicleSignal.GEAR to "挡位",
-            VehicleSignal.POWER_STATE to "电源",
-            VehicleSignal.BATTERY_PERCENT to "电量 %",
-            VehicleSignal.RANGE to "续航 km",
-            VehicleSignal.POWER to "功率 kW",
-            VehicleSignal.CHARGING to "充电",
-            VehicleSignal.LEFT_INDICATOR to "左转向",
-            VehicleSignal.RIGHT_INDICATOR to "右转向",
-            VehicleSignal.HAZARD to "双闪",
-            VehicleSignal.LOCKED to "车门锁",
-            VehicleSignal.TIRE_PRESSURE_FL to "胎压左前",
-            VehicleSignal.TIRE_PRESSURE_FR to "胎压右前",
-            VehicleSignal.TIRE_PRESSURE_RL to "胎压左后",
-            VehicleSignal.TIRE_PRESSURE_RR to "胎压右后",
-            VehicleSignal.BATTERY_TEMPERATURE to "电池温度",
-            VehicleSignal.DRIVE_MODE to "驾驶模式",
-        )
+        val CAR_ROWS = VEHICLE_ROWS
     }
 }

@@ -1,10 +1,8 @@
 package dev.customhud.adapters;
 
-import android.content.Context;
-import android.os.Build;
+import android.os.DeadObjectException;
 import android.os.Handler;
 import android.os.Looper;
-
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -13,9 +11,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Read-only ECARX gear subscription (sensor 0x200200), copied from CarLight's gear-sound source
- * ({@code dev.carlight.player.gear.EcarxGearSource}); only the package and the logger type changed.
- * Car.create on the main looper, connect + read baseline + subscribe on a worker, 1–60 s reconnect backoff.
+ * Read-only ECARX gear subscription (sensor 0x200200), from CarLight's gear-sound source
+ * ({@code dev.carlight.player.gear.EcarxGearSource}). The subscription steps are unchanged (read the
+ * baseline, post it, then {@code registerListener}); the {@code Car} connection itself now comes from
+ * the process-wide {@link EcarxCarHub}, shared with the vehicle data poller. A failed subscription is
+ * retried on the same car with its own 1–60 s backoff, so a gear-only problem does not reconnect the
+ * shared car under the vehicle poller; only a dead binder asks the hub to reconnect.
  */
 public final class EcarxGearSource implements AutoCloseable {
     /** Minimal logging sink (CarLight passes its own event log). */
@@ -35,14 +36,13 @@ public final class EcarxGearSource implements AutoCloseable {
         void onDisconnected();
     }
 
-    private static final String CAR = "com.ecarx.xui.adaptapi.car.Car";
-    private static final String WATCHER = "com.ecarx.xui.adaptapi.binder.IConnectable$IConnectWatcher";
     private static final String SENSOR_LISTENER =
             "com.ecarx.xui.adaptapi.car.sensor.ISensor$ISensorListener";
-    private static final long CONNECT_TIMEOUT_MS = 12_000;
+    private static final long SUBSCRIBE_TIMEOUT_MS = 12_000;
+    private static final long RESUBSCRIBE_DELAY_MS = 1_000;
     private static final long MAX_RETRY_MS = 60_000;
 
-    private final Context context;
+    private final EcarxCarHub hub;
     private final Log log;
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -51,14 +51,16 @@ public final class EcarxGearSource implements AutoCloseable {
         thread.setDaemon(true);
         return thread;
     });
-    private final Runnable retry = this::connect;
     private boolean running;
     private boolean closed;
-    private long retryMs = 1_000;
+    private EcarxCarHub.Handle handle;
+    private Object car;
     private Session current;
+    private long retryMs = 1_000;
+    private Runnable pendingRetry;
 
-    public EcarxGearSource(Context context, Log log, Listener listener) {
-        this.context = context.getApplicationContext();
+    public EcarxGearSource(EcarxCarHub hub, Log log, Listener listener) {
+        this.hub = hub;
         this.log = log;
         this.listener = listener;
     }
@@ -70,88 +72,47 @@ public final class EcarxGearSource implements AutoCloseable {
             return;
         }
         running = true;
-        connect();
-    }
+        handle = hub.acquire(new EcarxCarHub.Client() {
+            @Override
+            public void onConnected(Object connected) {
+                if (!running) {
+                    return;
+                }
+                car = connected;
+                cancelRetry();
+                retryMs = 1_000;
+                subscribe(connected);
+            }
 
-    private void connect() {
-        if (!running || current != null) {
-            return;
-        }
-        Session session = new Session();
-        current = session;
-        session.timeout = () -> failed(session, "连接或订阅超时");
-        main.postDelayed(session.timeout, CONNECT_TIMEOUT_MS);
-        worker.execute(() -> {
-            try {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("");
+            @Override
+            public void onDisconnected(String reason) {
+                car = null;
+                cancelRetry();
+                Session s = current;
+                if (s != null) {
+                    drop(s, reason);
                 }
-                ClassLoader loader = EcarxGearSource.class.getClassLoader();
-                Class<?> carClass = Class.forName(CAR, false, loader);
-                Class<?> watcherClass = Class.forName(WATCHER, false, loader);
-                Class<?> sensorListenerClass = Class.forName(SENSOR_LISTENER, false, loader);
-                Method factory = carClass.getMethod("create", Context.class);
-                if (!watcherClass.isInterface() || !sensorListenerClass.isInterface()) {
-                    throw new IllegalStateException("ECARX callback types are not interfaces");
-                }
-                main.post(() -> create(session, factory, watcherClass, sensorListenerClass));
-            } catch (Exception | LinkageError e) {
-                main.post(() -> failed(session, describe(e)));
             }
         });
     }
 
-    /** The verified SDK factory creates Handlers and must run on the main looper. */
-    private void create(Session session, Method factory, Class<?> watcherClass, Class<?> sensorListenerClass) {
-        if (!active(session)) {
+    private void subscribe(Object connectedCar) {
+        if (!running || current != null) {
             return;
         }
-        try {
-            session.car = factory.invoke(null, context);
-            if (session.car == null) {
-                throw new IllegalStateException("Car.create returned null");
-            }
-            session.watcher = Proxy.newProxyInstance(watcherClass.getClassLoader(),
-                    new Class<?>[]{watcherClass}, (proxy, method, args) -> {
-                        switch (method.getName()) {
-                            case "onConnected":
-                                main.post(() -> subscribe(session, sensorListenerClass));
-                                break;
-                            case "onDisConnected":
-                                main.post(() -> failed(session, "ECARX 已断开"));
-                                break;
-                            default:
-                                return objectMethod(proxy, method, args);
-                        }
-                        return null;
-                    });
-            worker.execute(() -> {
-                if (session.cancelled) {
-                    return;
-                }
-                try {
-                    session.car.getClass().getMethod("registerConnectWatcher", watcherClass)
-                            .invoke(session.car, session.watcher);
-                    session.car.getClass().getMethod("connect").invoke(session.car);
-                } catch (Exception | LinkageError e) {
-                    main.post(() -> failed(session, describe(e)));
-                }
-            });
-        } catch (Exception | LinkageError e) {
-            failed(session, describe(e));
-        }
-    }
-
-    private void subscribe(Session session, Class<?> listenerClass) {
-        if (!active(session) || session.subscribing) {
-            return;
-        }
-        session.subscribing = true;
+        Session session = new Session(connectedCar);
+        current = session;
+        session.timeout = () -> subscriptionFailed(session, "订阅超时", null);
+        main.postDelayed(session.timeout, SUBSCRIBE_TIMEOUT_MS);
         worker.execute(() -> {
             if (session.cancelled) {
                 return;
             }
             try {
+                Class<?> listenerClass = Class.forName(SENSOR_LISTENER, false, EcarxGearSource.class.getClassLoader());
+                if (!listenerClass.isInterface()) {
+                    throw new IllegalStateException("ECARX sensor listener is not an interface");
+                }
                 session.sensor = session.car.getClass().getMethod("getSensorManager").invoke(session.car);
                 if (session.sensor == null) {
                     throw new IllegalStateException("getSensorManager returned null");
@@ -183,7 +144,7 @@ public final class EcarxGearSource implements AutoCloseable {
                             .invoke(session.sensor, EcarxGear.SENSOR_GEAR);
                     initial = value instanceof Integer ? (Integer) value : null;
                 } catch (Exception | LinkageError e) {
-                    log.warn("gear", "初始挡位读取失败，等待事件建立基准: " + describe(e));
+                    log.warn("gear", "初始挡位读取失败，等待事件建立基准: " + EcarxCarHub.describe(e));
                     initial = null;
                 }
                 Integer baseline = initial;
@@ -202,6 +163,7 @@ public final class EcarxGearSource implements AutoCloseable {
                     return;
                 }
                 Object accepted = register.invoke(session.sensor, session.sensorListener, EcarxGear.SENSOR_GEAR);
+                session.registered = true;
                 if (Boolean.FALSE.equals(accepted)) {
                     throw new IllegalStateException("registerListener returned false");
                 }
@@ -211,10 +173,10 @@ public final class EcarxGearSource implements AutoCloseable {
                     }
                     main.removeCallbacks(session.timeout);
                     retryMs = 1_000;
-                    log.info("gear", "ECARX 挡位已连接并订阅 0x200200; baseline=" + baseline);
+                    log.info("gear", "ECARX 挡位已订阅 0x200200（共享连接）; baseline=" + baseline);
                 });
             } catch (Exception | LinkageError e) {
-                main.post(() -> failed(session, describe(e)));
+                main.post(() -> subscriptionFailed(session, EcarxCarHub.describe(e), e));
             }
         });
     }
@@ -233,29 +195,73 @@ public final class EcarxGearSource implements AutoCloseable {
             session.supportUnavailable = true;
             listener.onGear(null);
         } else if (session.supportUnavailable) {
-            // Reconnect through the same read-before-subscribe path to obtain a silent, fresh
+            // Re-subscribe through the same read-before-subscribe path to obtain a silent, fresh
             // baseline, rather than treating a value retained during unavailability as a shift.
-            failed(session, "挡位支持已恢复，重新读取基准");
+            Object sameCar = session.car;
+            drop(session, "挡位支持已恢复，重新读取基准");
+            main.postDelayed(() -> {
+                if (running && car == sameCar) {
+                    subscribe(sameCar);
+                }
+            }, RESUBSCRIBE_DELAY_MS);
         }
+    }
+
+    /**
+     * The subscription failed on a connected car. A dead binder is a connection problem: the hub
+     * reconnects everyone. Anything else is retried here on the same car with backoff.
+     */
+    private void subscriptionFailed(Session session, String reason, Throwable error) {
+        if (!active(session)) {
+            return;
+        }
+        drop(session, reason + "; " + retryMs + "ms 后重新订阅");
+        if (isDeadObject(error)) {
+            if (handle != null) {
+                handle.reportFailure(session.car, "挡位订阅失败: " + reason);
+            }
+            return;
+        }
+        Object sameCar = session.car;
+        cancelRetry();
+        pendingRetry = () -> {
+            pendingRetry = null;
+            if (running && car == sameCar) {
+                subscribe(sameCar);
+            }
+        };
+        main.postDelayed(pendingRetry, retryMs);
+        retryMs = Math.min(MAX_RETRY_MS, retryMs * 2);
+    }
+
+    private void cancelRetry() {
+        if (pendingRetry != null) {
+            main.removeCallbacks(pendingRetry);
+            pendingRetry = null;
+        }
+    }
+
+    private static boolean isDeadObject(Throwable error) {
+        while (error instanceof InvocationTargetException && error.getCause() != null) {
+            error = error.getCause();
+        }
+        return error instanceof DeadObjectException;
     }
 
     private boolean active(Session session) {
         return running && current == session && !session.cancelled;
     }
 
-    private void failed(Session session, String reason) {
-        if (!active(session)) {
+    private void drop(Session session, String reason) {
+        if (current != session) {
             return;
         }
         current = null;
         session.cancelled = true;
         main.removeCallbacks(session.timeout);
         listener.onDisconnected();
-        log.warn("gear", reason + "; 将在 " + retryMs + "ms 后重连");
+        log.warn("gear", reason);
         worker.execute(() -> cleanup(session));
-        main.removeCallbacks(retry);
-        main.postDelayed(retry, retryMs);
-        retryMs = Math.min(MAX_RETRY_MS, retryMs * 2);
     }
 
     /** Main thread only; listener callbacks already queued for old sessions are discarded. */
@@ -267,7 +273,7 @@ public final class EcarxGearSource implements AutoCloseable {
         }
         closed = true;
         running = false;
-        main.removeCallbacks(retry);
+        cancelRetry();
         Session session = current;
         current = null;
         if (session != null) {
@@ -276,36 +282,20 @@ public final class EcarxGearSource implements AutoCloseable {
             worker.execute(() -> cleanup(session));
         }
         worker.shutdown();
+        if (handle != null) {
+            handle.release();
+            handle = null;
+        }
+        car = null;
     }
 
+    /** Worker. Only the sensor listener is ours; the Car connection belongs to the hub. */
     private void cleanup(Session session) {
-        if (session.sensor != null && session.sensorListener != null && session.unregisterSensor != null) {
+        if (session.registered && session.sensor != null && session.sensorListener != null && session.unregisterSensor != null) {
             try {
                 session.unregisterSensor.invoke(session.sensor, session.sensorListener);
             } catch (Exception | LinkageError e) {
-                log.warn("gear", "注销挡位监听失败: " + describe(e));
-            }
-        }
-        if (session.car != null) {
-            // Some SDK versions expose an unregister method, others only disconnect().
-            if (session.watcher != null) {
-                try {
-                    for (Method method : session.car.getClass().getMethods()) {
-                        if ("unregisterConnectWatcher".equals(method.getName())
-                                && method.getParameterTypes().length == 1
-                                && method.getParameterTypes()[0].isInstance(session.watcher)) {
-                            method.invoke(session.car, session.watcher);
-                            break;
-                        }
-                    }
-                } catch (Exception | LinkageError e) {
-                    log.warn("gear", "注销连接监听失败: " + describe(e));
-                }
-            }
-            try {
-                session.car.getClass().getMethod("disconnect").invoke(session.car);
-            } catch (Exception | LinkageError e) {
-                log.warn("gear", "释放 ECARX 连接失败: " + describe(e));
+                log.warn("gear", "注销挡位监听失败: " + EcarxCarHub.describe(e));
             }
         }
     }
@@ -319,13 +309,6 @@ public final class EcarxGearSource implements AutoCloseable {
         }
     }
 
-    private static String describe(Throwable error) {
-        while (error instanceof InvocationTargetException && error.getCause() != null) {
-            error = error.getCause();
-        }
-        return error.toString();
-    }
-
     private static void requireMain() {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             throw new IllegalStateException("EcarxGearSource must be used on the main thread");
@@ -333,15 +316,18 @@ public final class EcarxGearSource implements AutoCloseable {
     }
 
     private static final class Session {
+        final Object car;
         volatile boolean cancelled;
-        boolean subscribing;
+        volatile boolean registered;
         boolean ready;
         boolean supportUnavailable;
         Runnable timeout;
-        Object car;
-        Object watcher;
         Object sensor;
         Object sensorListener;
         Method unregisterSensor;
+
+        Session(Object car) {
+            this.car = car;
+        }
     }
 }

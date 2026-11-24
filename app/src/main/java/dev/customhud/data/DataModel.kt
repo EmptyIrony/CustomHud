@@ -2,7 +2,7 @@ package dev.customhud.data
 
 enum class Validity { KNOWN, UNKNOWN, STALE, UNAVAILABLE, ERROR }
 enum class TimestampBasis { DEVICE_SAMPLE, CALLBACK_RECEIPT, READ_COMPLETION, UNKNOWN }
-enum class SignalUnit { KMH, PERCENT, KM, CELSIUS, BOOLEAN, ENUM, MPS, KILOWATT, UNVERIFIED, NONE }
+enum class SignalUnit { KMH, PERCENT, KM, CELSIUS, BOOLEAN, ENUM, MPS, KILOWATT, BAR, G, UNVERIFIED, NONE }
 enum class ConnectionState { UNAVAILABLE, CONNECTING, CONNECTED, DISCONNECTED, ERROR }
 
 enum class VehicleSignal(val unit: SignalUnit) {
@@ -16,10 +16,10 @@ enum class VehicleSignal(val unit: SignalUnit) {
     VOLTAGE(SignalUnit.UNVERIFIED),
     CURRENT(SignalUnit.UNVERIFIED),
     TIME_REMAINING(SignalUnit.UNVERIFIED),
-    TIRE_PRESSURE_FL(SignalUnit.UNVERIFIED),
-    TIRE_PRESSURE_FR(SignalUnit.UNVERIFIED),
-    TIRE_PRESSURE_RL(SignalUnit.UNVERIFIED),
-    TIRE_PRESSURE_RR(SignalUnit.UNVERIFIED),
+    TIRE_PRESSURE_FL(SignalUnit.BAR),
+    TIRE_PRESSURE_FR(SignalUnit.BAR),
+    TIRE_PRESSURE_RL(SignalUnit.BAR),
+    TIRE_PRESSURE_RR(SignalUnit.BAR),
     TIRE_TEMPERATURE_FL(SignalUnit.CELSIUS),
     TIRE_TEMPERATURE_FR(SignalUnit.CELSIUS),
     TIRE_TEMPERATURE_RL(SignalUnit.CELSIUS),
@@ -28,10 +28,11 @@ enum class VehicleSignal(val unit: SignalUnit) {
     MOTOR_TEMPERATURE_REAR(SignalUnit.CELSIUS),
     MOTOR_ACTIVITY(SignalUnit.ENUM),
     MOTOR_FAULT(SignalUnit.ENUM),
-    ACCELERATOR(SignalUnit.UNVERIFIED),
+    ACCELERATOR(SignalUnit.PERCENT),
+    /** Brake pedal depth as delivered (0..30 on the car), not a percentage. */
     BRAKE(SignalUnit.UNVERIFIED),
-    ACCELERATION_LONGITUDINAL(SignalUnit.UNVERIFIED),
-    ACCELERATION_LATERAL(SignalUnit.UNVERIFIED),
+    ACCELERATION_LONGITUDINAL(SignalUnit.G),
+    ACCELERATION_LATERAL(SignalUnit.G),
     POWER(SignalUnit.KILOWATT),
     LEFT_INDICATOR(SignalUnit.BOOLEAN),
     RIGHT_INDICATOR(SignalUnit.BOOLEAN),

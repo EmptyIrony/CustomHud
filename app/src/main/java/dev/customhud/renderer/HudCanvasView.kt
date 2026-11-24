@@ -259,6 +259,21 @@ class HudCanvasView @JvmOverloads constructor(
                 val b = canvas.drawCentered(if (right == true) "▶" else "△", x + geometry.pairSpreadPx / 2, y, paint)
                 return RectF(a).apply { union(b) }
             }
+            WidgetType.PEDALS -> {
+                val accelerator = vehicle.value(VehicleSignal.ACCELERATOR)?.value as? Number
+                val brake = vehicle.value(VehicleSignal.BRAKE)?.value as? Number
+                if (accelerator != null || brake != null || mode == DataMode.PREVIEW) {
+                    paint.size(unit * .55f)
+                    dimPaint.size(unit * .30f)
+                    val left = x - geometry.pairSpreadPx / 2
+                    val right = x + geometry.pairSpreadPx / 2
+                    val a = canvas.drawCentered(accelerator?.let { formatNumber(it, 0) + "%" } ?: "—", left, y, paint)
+                    val b = canvas.drawCentered(brake?.let { formatNumber(it, 0) } ?: "—", right, y, paint)
+                    val ca = canvas.drawCentered("油门", left, y + unit * .55f, dimPaint)
+                    val cb = canvas.drawCentered("制动", right, y + unit * .55f, dimPaint)
+                    return RectF(a).apply { union(b); union(ca); union(cb) }
+                }
+            }
             WidgetType.REAR_CAMERA -> return drawCamera(canvas, widget)
             WidgetType.LYRIC -> return drawLyric(canvas, x, y, unit * 1.25f)
             WidgetType.TRACK -> {
@@ -296,7 +311,9 @@ class HudCanvasView @JvmOverloads constructor(
             WidgetType.POWER_METER -> numberText(VehicleSignal.POWER, " kW")
             WidgetType.CHARGE -> booleanValue(VehicleSignal.CHARGING)?.let { if (it) "充电中" else "未充电" } ?: "—"
             WidgetType.TIRES -> if (mode == DataMode.PREVIEW) "示例" else "不可用"
-            WidgetType.MOTORS, WidgetType.G_METER, WidgetType.PEDALS,
+            WidgetType.MOTORS -> vehicle.value(VehicleSignal.MOTOR_ACTIVITY)?.value?.toString() ?: "—"
+            WidgetType.G_METER -> gText()
+            WidgetType.PEDALS -> "—"
             WidgetType.SPEED_LIMIT, WidgetType.CAM_AHEAD, WidgetType.AVG_SECTION, WidgetType.AMBUSH_HEAT,
             WidgetType.POST_AHEAD, WidgetType.AMBUSH_OBJ, WidgetType.SIGN_AHEAD -> unavailableText()
             else -> "—"
@@ -655,6 +672,15 @@ class HudCanvasView @JvmOverloads constructor(
         is Enum<*> -> value.name
         is String -> value
         else -> "—"
+    }
+
+    /** Longitudinal / lateral acceleration in g, one decimal (same precision as [RenderKey]). */
+    private fun gText(): String {
+        val lon = vehicle.value(VehicleSignal.ACCELERATION_LONGITUDINAL)?.value as? Number
+        val lat = vehicle.value(VehicleSignal.ACCELERATION_LATERAL)?.value as? Number
+        if (lon == null && lat == null) return "—"
+        fun g(v: Number?) = v?.let { formatNumber(if (abs(it.toDouble()) < .05) 0.0 else it.toDouble(), 1) } ?: "—"
+        return "纵 ${g(lon)}  横 ${g(lat)}"
     }
 
     private fun booleanValue(signal: VehicleSignal): Boolean? = vehicle.value(signal)?.value as? Boolean

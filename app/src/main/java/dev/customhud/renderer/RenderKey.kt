@@ -41,6 +41,9 @@ object RenderKey {
             VehicleSignal.TIRE_PRESSURE_FL, VehicleSignal.TIRE_PRESSURE_FR,
             VehicleSignal.TIRE_PRESSURE_RL, VehicleSignal.TIRE_PRESSURE_RR,
         ),
+        WidgetType.MOTORS to listOf(VehicleSignal.MOTOR_ACTIVITY),
+        WidgetType.G_METER to listOf(VehicleSignal.ACCELERATION_LONGITUDINAL, VehicleSignal.ACCELERATION_LATERAL),
+        WidgetType.PEDALS to listOf(VehicleSignal.ACCELERATOR, VehicleSignal.BRAKE),
     )
 
     val DECIMALS: Map<VehicleSignal, Int> = mapOf(
@@ -48,5 +51,10 @@ object RenderKey {
         VehicleSignal.RANGE to 0,
         VehicleSignal.POWER to 0,
         VehicleSignal.BATTERY_TEMPERATURE to 1,
+        // Continuous values at display precision only, so driving does not redraw on every poll.
+        VehicleSignal.ACCELERATION_LONGITUDINAL to 1,
+        VehicleSignal.ACCELERATION_LATERAL to 1,
+        VehicleSignal.ACCELERATOR to 0,
+        VehicleSignal.BRAKE to 0,
     )
 }

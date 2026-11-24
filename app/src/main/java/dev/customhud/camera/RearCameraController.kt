@@ -133,11 +133,11 @@ class RearCameraController(
         reconcile()
     }
 
-    fun onAndroidCarGear(reading: GearReading) {
-        gearTracker.updateAndroidCar(reading, scheduler.now())
+    fun onPolledGear(reading: GearReading) {
+        gearTracker.updatePolled(reading, scheduler.now())
         gearStaleTask?.cancel()
         // Re-evaluate once this reading would be stale if no newer one arrives.
-        gearStaleTask = scheduler.postDelayed(GearTracker.ANDROID_CAR_STALE_MS + 100) { reconcile() }
+        gearStaleTask = scheduler.postDelayed(GearTracker.POLLED_STALE_MS + 100) { reconcile() }
         reconcile()
     }
 

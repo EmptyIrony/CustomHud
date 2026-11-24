@@ -1,0 +1,41 @@
+package dev.customhud.adapters
+
+import dev.customhud.data.VehicleSignal
+
+/** Probe page / report order and labels for every vehicle signal. */
+val VEHICLE_ROWS: List<Pair<VehicleSignal, String>> = listOf(
+    VehicleSignal.SPEED to "车速 km/h",
+    VehicleSignal.GEAR to "挡位",
+    VehicleSignal.BATTERY_PERCENT to "电量 %",
+    VehicleSignal.RANGE to "续航 km",
+    VehicleSignal.LEFT_INDICATOR to "左转向",
+    VehicleSignal.RIGHT_INDICATOR to "右转向",
+    VehicleSignal.HAZARD to "双闪",
+    VehicleSignal.LOCKED to "中控锁",
+    VehicleSignal.DRIVE_MODE to "驾驶模式",
+    VehicleSignal.SUSPENSION_HEIGHT to "悬架高度",
+    VehicleSignal.SUSPENSION_STIFFNESS to "悬架软硬",
+    VehicleSignal.MOTOR_ACTIVITY to "电机",
+    VehicleSignal.ACCELERATOR to "油门 %",
+    VehicleSignal.BRAKE to "制动",
+    VehicleSignal.ACCELERATION_LONGITUDINAL to "纵向 g",
+    VehicleSignal.ACCELERATION_LATERAL to "横向 g",
+    VehicleSignal.TIRE_PRESSURE_FL to "胎压左前",
+    VehicleSignal.TIRE_PRESSURE_FR to "胎压右前",
+    VehicleSignal.TIRE_PRESSURE_RL to "胎压左后",
+    VehicleSignal.TIRE_PRESSURE_RR to "胎压右后",
+    VehicleSignal.TIRE_TEMPERATURE_FL to "胎温左前",
+    VehicleSignal.TIRE_TEMPERATURE_FR to "胎温右前",
+    VehicleSignal.TIRE_TEMPERATURE_RL to "胎温左后",
+    VehicleSignal.TIRE_TEMPERATURE_RR to "胎温右后",
+    VehicleSignal.BATTERY_TEMPERATURE to "电池温度",
+    VehicleSignal.MOTOR_TEMPERATURE_FRONT to "前电机温度",
+    VehicleSignal.MOTOR_TEMPERATURE_REAR to "后电机温度",
+    VehicleSignal.CHARGING to "充电",
+    VehicleSignal.POWER to "功率",
+    VehicleSignal.VOLTAGE to "充电电压",
+    VehicleSignal.CURRENT to "充电电流",
+    VehicleSignal.TIME_REMAINING to "充电剩余",
+    VehicleSignal.POWER_STATE to "电源",
+    VehicleSignal.MOTOR_FAULT to "电机故障",
+)

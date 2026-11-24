@@ -12,7 +12,8 @@ import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
 import dev.customhud.CustomHudApplication
-import dev.customhud.adapters.AndroidCarDataSource
+import dev.customhud.adapters.EcarxVehicleDataSource
+import dev.customhud.adapters.EcarxVehicleFeed
 import dev.customhud.camera.CameraWindowLayer
 import dev.customhud.camera.RearCameraPolicy
 import dev.customhud.data.DataMode
@@ -100,9 +101,9 @@ class AndroidDisplayPlatform(
 
     override fun startData(generation: Long): DataHandle {
         val gearSink = camera?.controller
-        val source = AndroidCarDataSource(context)
+        val source = EcarxVehicleDataSource(app.vehicle)
         val profile = VehicleProfile(
-            name = "standard-android-car",
+            name = EcarxVehicleFeed.PROFILE,
             freshnessBudgetsMs = mapOf(VehicleSignal.SPEED to 1500L, VehicleSignal.GEAR to 5000L),
         )
         val handle = object : DataHandle {
@@ -119,7 +120,7 @@ class AndroidDisplayPlatform(
             mainHandler.post {
                 if (handle.open && generation == appGeneration()) {
                     activeWindow?.updateVehicle(snapshot)
-                    gearSink?.onAndroidCarGear(RearCameraPolicy.gearFromSnapshot(snapshot, SystemClock.elapsedRealtime()))
+                    gearSink?.onPolledGear(RearCameraPolicy.gearFromSnapshot(snapshot, SystemClock.elapsedRealtime()))
                 }
             }
         }

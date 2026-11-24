@@ -39,7 +39,7 @@ shasum -a 256 app/build/outputs/apk/debug/*.apk
 - `display.android` / `display`：副屏 Context/WindowManager 与前台服务
 - `renderer`：不可变帧、Canvas 组件、重绘合并和组件异常隔离
 - `layout`：schemaVersion 1、严格完整替换、patch 和原子持久化
-- `data` / `adapters`：逐字段数据模型、显式 mock、公开 android.car 与 ECARX 能力探测
+- `data` / `adapters`：逐字段数据模型、显式 mock、ECARX AdaptAPI 车况（共享连接 + 轮询）与挡位订阅
 
 ## 用户手动现场操作
 
@@ -59,13 +59,11 @@ shasum -a 256 app/build/outputs/apk/debug/*.apk
 
 ## 数据边界
 
-PREVIEW 是唯一允许模拟车况的模式。DEVICE 仅启用公开 `android.car` 候选适配，后台连接/轮询，不阻塞 UI：
+PREVIEW 是唯一允许模拟车况的模式。DEVICE 从 ECARX AdaptAPI 读取（2026-11-24 起；此前的 `android.car` 适配在极氪车机上只拿到静态占位值，已删除），后台连接/轮询，不阻塞 UI。详见下文“车况改用 ECARX”。
 
-- 车速：标准 PERF_VEHICLE_SPEED，m/s 转 km/h，需要 CAR_SPEED 和属性支持。
-- 挡位：标准 GEAR_SELECTION，只映射明确的 P/R/N/D/LOW，需要 CAR_POWERTRAIN 和属性支持。
-- 缓存 getter 只记录 `READ_COMPLETION`，不伪造设备采样时间；失败值不会变成 0 或 P。
-- 其余现场字段保持 unavailable。ECARX 只探测类与工厂方法可见性，不自动连接，不绕过 hidden API 或签名权限。
-- SDK disconnect 异步排队时，诊断明确记录本地取消与 SDK 清理的差异。
+- 只有 CarLight 车主实车确认过的读数（CarLight `docs/vehicle-interfaces.md` §27）作为 KNOWN 显示；未确认的候选只在探测页显示原值。
+- getter 只记录 `READ_COMPLETION`，不伪造设备采样时间；失败值不会变成 0 / 关 / P。
+- 断开、轮询卡住时全部信号发布为 unavailable，HUD 不会停在旧值上。
 
 ## 离线验证与现场限制
 
@@ -122,3 +120,16 @@ PREVIEW 是唯一允许模拟车况的模式。DEVICE 仅启用公开 `android.c
 - Manifest 新增 CAR_ENERGY、CAR_ENERGY_PORTS、CAR_EXTERIOR_LIGHTS、CAR_TIRES、CONTROL_CAR_DOORS、CAR_EXTERIOR_ENVIRONMENT。
 
 离线验证：`tools/build-linux-arm64.sh` 构建、lint（0 error）通过，37 项单元测试通过（新增属性 ID 编码、单位换算、重绘判定）。未在真车或模拟器运行；目标车型实际暴露哪些标准属性仍待“车况 · 实时”和报告确认。
+
+## 车况改用 ECARX（2026-11-24）
+
+极氪车机上 `android.car` 标准属性拿不到真实数据（静态占位值）。改为与隔壁 CarLight 相同的 ECARX AdaptAPI 读数（CarLight `EcarxVehicle` / `docs/vehicle-interfaces.md` §27，2026-11-07 车主实车确认）。
+
+- `adapters/EcarxCarHub.java`：进程内唯一的 ECARX `Car` 连接（主线程 `Car.create`，工作线程 `registerConnectWatcher` + `connect`，12 秒超时，1～60 秒退避重连），按引用计数开关。SDK 可能每进程只给一个共享 `Car`、连接监听只有一个槽位，所以挡位订阅、车况轮询和探测页都挂在这一个连接上，不各自 `Car.create`。
+- `adapters/EcarxGearSource.java`：挡位订阅逻辑不变（先读基准再 `registerListener`），连接改由 hub 提供；订阅失败时请 hub 重连。
+- `adapters/EcarxVehicleFeed.kt`：进程内共享的轮询线程，HUD 窗口、仪表相机窗口、探测页共用。每 200 ms 读车速、挡位、转向灯/双闪、踏板、加速度、功率流；每 2 秒读电量、续航、胎压/胎温、中控锁、驾驶模式、悬架和未确认候选。DeadObject 或连续 5 秒全部失败时重连；轮询 3 秒无返回时全部置为不可用。
+- `adapters/EcarxSnapshotBuilder.kt` / `EcarxDecode.kt`：纯函数解码（有单元测试）。车速 m/s×3.6；胎压 原值÷100 = bar；加速度 ÷9.8 = g；函数值按 zHUD 顺序回退 zone，并缓存有效的 zone 写法，稳定后每个 id 只需一次 binder 调用。
+- 转向灯/双闪：值是否随灯闪烁未知，熄灭 800 ms 内仍算亮，HUD 箭头不会跟着闪。
+- 仍未实车确认、只在探测页显示原值（HUD 显示“—”）：电池温度 `0x102A00`、前后电机温度、充电（插口 `0x24130200` / 电池状态 `0x201500`）、功率 `0x103600`、充电电压/电流/剩余时间、电源 `0x200100`。因此“电池温度”“充电”“功率”组件暂时显示“—”。
+- 新接通的组件：电机（前/后 待机·驱动·回收）、G 值（纵/横，0.1 g）、踏板（油门 %、制动原值）。
+- 探测页“车况 · 实时”和报告“A 车况”改为 ECARX：连接状态、轮询耗时/调用数/错误、每个信号的值与来源 id 及原值。

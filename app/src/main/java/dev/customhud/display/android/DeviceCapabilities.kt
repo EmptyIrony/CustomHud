@@ -58,7 +58,7 @@ class DeviceCapabilities(private val context: Context) {
             SignalCapability(if (overlay) CapabilityStatus.AVAILABLE else CapabilityStatus.DENIED, "Overlay Settings=$overlay AppOps=$appOps", now, Build.FINGERPRINT),
             SignalCapability(CapabilityStatus.AVAILABLE, "Foreground service declared; actual start recorded separately", now, Build.FINGERPRINT),
             SignalCapability(notification, "Notification permission is independent of display permission", now, Build.FINGERPRINT),
-        ) + dev.customhud.adapters.CarProps.PERMISSIONS.map { vehiclePermission(it, now) }
+        ) + dev.customhud.adapters.VehiclePermissions.PERMISSIONS.map { vehiclePermission(it, now) }
     }
 
     private fun vehiclePermission(permission: String, now: Long): SignalCapability {

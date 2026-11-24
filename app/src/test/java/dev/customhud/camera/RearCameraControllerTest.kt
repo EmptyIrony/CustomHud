@@ -72,12 +72,12 @@ class RearCameraControllerTest {
     }
 
     @Test
-    fun androidCarFallbackExpiresWithoutNewData() {
+    fun polledFallbackExpiresWithoutNewData() {
         val f = CameraFixture(RearCameraMode.NOT_PARK)
         f.ready()
-        f.controller.onAndroidCarGear(GearReading(Gear.DRIVE, RearCameraPolicy.ANDROID_CAR, "GEAR_SELECTION"))
+        f.controller.onPolledGear(GearReading(Gear.DRIVE, RearCameraPolicy.POLLED, "ECARX 0x200200"))
         assertEquals(1, f.backend.opens)
-        f.scheduler.advanceBy(GearTracker.ANDROID_CAR_STALE_MS + 200)
+        f.scheduler.advanceBy(GearTracker.POLLED_STALE_MS + 200)
         assertEquals(listOf("open", "close"), f.backend.calls)
         assertTrue(f.controller.status.reason.contains("挡位不可用"))
     }

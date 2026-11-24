@@ -69,10 +69,10 @@ class RearCameraPolicyTest {
     }
 
     @Test
-    fun androidCarSnapshotNeedsKnownFreshMappedValue() {
+    fun polledSnapshotNeedsKnownFreshMappedValue() {
         fun snap(value: Gear?, validity: Validity = Validity.KNOWN, receivedAt: Long = 1_000) = VehicleSnapshot(
             values = mapOf(VehicleSignal.GEAR to DataValue(value, validity, receivedAt, receivedAt, TimestampBasis.DEVICE_SAMPLE,
-                SignalUnit.ENUM, "android.car:GEAR_SELECTION", 1, 5_000)),
+                SignalUnit.ENUM, "ECARX 0x200200", 1, 5_000)),
         )
         assertEquals(Gear.DRIVE, RearCameraPolicy.gearFromSnapshot(snap(Gear.DRIVE), 1_500).gear)
         assertFalse(RearCameraPolicy.gearFromSnapshot(snap(Gear.DRIVE), 7_000).available) // stale
@@ -82,10 +82,10 @@ class RearCameraPolicyTest {
     }
 
     @Test
-    fun trackerPrefersEcarxAndFallsBackToFreshAndroidCar() {
+    fun trackerPrefersEcarxAndFallsBackToFreshPolledGear() {
         val tracker = GearTracker()
         assertFalse(tracker.effective(0).available)
-        tracker.updateAndroidCar(GearReading(Gear.PARK, RearCameraPolicy.ANDROID_CAR, "GEAR_SELECTION"), 1_000)
+        tracker.updatePolled(GearReading(Gear.PARK, RearCameraPolicy.POLLED, "ECARX 0x200200"), 1_000)
         assertEquals(Gear.PARK, tracker.effective(2_000).gear)
         tracker.updateEcarx(GearReading(Gear.REVERSE, RearCameraPolicy.ECARX, "事件"))
         assertEquals(Gear.REVERSE, tracker.effective(2_000).gear)

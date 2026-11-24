@@ -79,54 +79,55 @@ object RearCameraPolicy {
         }
     }
 
-    /** Gear from a standard android.car snapshot; only KNOWN and fresh values count. */
+    /** Gear from the polled ECARX vehicle snapshot; only KNOWN and fresh values count. */
     fun gearFromSnapshot(snapshot: VehicleSnapshot, now: Long): GearReading {
         val value: DataValue<*> = snapshot.value(VehicleSignal.GEAR)
-            ?: return GearReading.unavailable(ANDROID_CAR, "无挡位数据")
+            ?: return GearReading.unavailable(POLLED, "无挡位数据")
         val gear = value.value as? Gear
         return when {
             value.validity != Validity.KNOWN || gear == null ->
-                GearReading.unavailable(ANDROID_CAR, value.error?.let { "${it.code} ${it.message}" } ?: value.validity.name)
-            gear == Gear.UNKNOWN -> GearReading.unavailable(ANDROID_CAR, "挡位值未映射")
-            !value.isFresh(now) -> GearReading.unavailable(ANDROID_CAR, "数据过期")
-            else -> GearReading(gear, ANDROID_CAR, value.source)
+                GearReading.unavailable(POLLED, value.error?.let { "${it.code} ${it.message}" } ?: value.validity.name)
+            gear == Gear.UNKNOWN -> GearReading.unavailable(POLLED, "挡位值未映射")
+            !value.isFresh(now) -> GearReading.unavailable(POLLED, "数据过期")
+            else -> GearReading(gear, POLLED, value.source)
         }
     }
 
-    const val ANDROID_CAR = "android.car"
+    const val POLLED = "ECARX 轮询"
     const val ECARX = "ECARX 0x200200"
 }
 
 /**
  * Picks the gear the camera mode uses. ECARX 0x200200 (event-driven, the same subscription CarLight's
- * gear sounds use on this car) wins; android.car GEAR_SELECTION is the fallback while it is fresh.
+ * gear sounds use on this car) wins; the polled vehicle snapshot (getSensorEvent 0x200200, 200 ms) is the
+ * fallback while it is fresh.
  * Main thread only.
  */
-class GearTracker(private val androidCarStaleMs: Long = ANDROID_CAR_STALE_MS) {
+class GearTracker(private val polledStaleMs: Long = POLLED_STALE_MS) {
     var ecarx: GearReading = GearReading.unavailable(RearCameraPolicy.ECARX, "未连接")
         private set
-    private var androidCar: GearReading = GearReading.unavailable(RearCameraPolicy.ANDROID_CAR, "无数据")
-    private var androidCarAt: Long? = null
+    private var polled: GearReading = GearReading.unavailable(RearCameraPolicy.POLLED, "无数据")
+    private var polledAt: Long? = null
 
     fun updateEcarx(reading: GearReading) {
         ecarx = reading
     }
 
-    fun updateAndroidCar(reading: GearReading, now: Long) {
-        androidCar = reading
-        androidCarAt = now
+    fun updatePolled(reading: GearReading, now: Long) {
+        polled = reading
+        polledAt = now
     }
 
     fun effective(now: Long): GearReading {
         if (ecarx.available) return ecarx
-        val at = androidCarAt
-        val fresh = at != null && now - at <= androidCarStaleMs
-        if (androidCar.available && fresh) return androidCar
-        val carDetail = if (androidCar.available && !fresh) "数据过期" else androidCar.detail
-        return GearReading.unavailable("—", "ECARX：${ecarx.detail}；android.car：$carDetail")
+        val at = polledAt
+        val fresh = at != null && now - at <= polledStaleMs
+        if (polled.available && fresh) return polled
+        val carDetail = if (polled.available && !fresh) "数据过期" else polled.detail
+        return GearReading.unavailable("—", "ECARX：${ecarx.detail}；ECARX 轮询：$carDetail")
     }
 
     companion object {
-        const val ANDROID_CAR_STALE_MS = 5_000L
+        const val POLLED_STALE_MS = 5_000L
     }
 }

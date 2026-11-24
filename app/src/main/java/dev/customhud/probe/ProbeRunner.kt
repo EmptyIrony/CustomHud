@@ -17,8 +17,8 @@ import android.os.SystemClock
 import android.provider.Settings
 import dev.customhud.BuildConfig
 import dev.customhud.CustomHudApplication
-import dev.customhud.adapters.CarProps
-import dev.customhud.adapters.CarPropertyDump
+import dev.customhud.adapters.VEHICLE_ROWS
+import dev.customhud.adapters.VehiclePermissions
 import dev.customhud.display.android.DeviceCapabilities
 import dev.customhud.media.MediaMonitor
 import dev.customhud.media.MediaNotificationListener
@@ -45,7 +45,6 @@ class ProbeRunner(private val context: Context) {
         val packages: List<String>,
         val dumpsys: List<String>,
         val network: List<String>,
-        val car: CarPropertyDump.Result,
     )
 
     /** Runs for [durationMs]; [onProgress] gets (message, 0..1). Returns a cancel function. */
@@ -56,6 +55,8 @@ class ProbeRunner(private val context: Context) {
     ): () -> Unit {
         startedAt = SystemClock.elapsedRealtime()
         val releaseMedia = app.media.acquire()
+        // Keeps the shared ECARX poller running for the whole probe; the section is read at the end.
+        val releaseVehicle = app.vehicle.subscribe { }
         val header = header()
         val initialSessions = sessionSection()
         val sessionPackages = app.media.controllers().map { it.packageName }.distinct()
@@ -64,11 +65,6 @@ class ProbeRunner(private val context: Context) {
                 packages = safeLines("应用组件") { packageSection(sessionPackages) },
                 dumpsys = safeLines("dumpsys") { dumpsysSection() },
                 network = safeLines("网络") { networkSection() },
-                car = try {
-                    CarPropertyDump.run(context)
-                } catch (error: Throwable) {
-                    CarPropertyDump.Result(listOf("== A 车况 ==", "  失败 ${error::class.java.simpleName} ${error.message?.take(100)}", ""), emptyList())
-                },
             )
             main.post { background = result }
         }, "customhud-probe").start()
@@ -80,9 +76,11 @@ class ProbeRunner(private val context: Context) {
                 if (elapsed % 5_000 < 1_000 || samples.isEmpty()) sample()
                 if (elapsed >= durationMs && background != null) {
                     releaseMedia()
+                    val vehicle = safeLines("A 车况") { vehicleSection() }
+                    releaseVehicle()
                     val result = background!!
-                    onDone(header + result.car.summary + initialSessions + changeSection() + sampleSection() + notificationSection() +
-                        result.packages + result.dumpsys + result.network + result.car.full + listOf("", "== 报告结束 =="))
+                    onDone(header + vehicle + initialSessions + changeSection() + sampleSection() + notificationSection() +
+                        result.packages + result.dumpsys + result.network + listOf("", "== 报告结束 =="))
                     return
                 }
                 val waiting = if (elapsed >= durationMs) "（等待系统查询完成）" else ""
@@ -95,6 +93,7 @@ class ProbeRunner(private val context: Context) {
             if (!cancelled) {
                 cancelled = true
                 releaseMedia()
+                releaseVehicle()
             }
         }
     }
@@ -399,6 +398,14 @@ class ProbeRunner(private val context: Context) {
         }
     }
 
+    /** ECARX vehicle data as the HUD sees it (same shared poller); ? lines are raw values still to be confirmed. */
+    private fun vehicleSection(): List<String> {
+        val feed = app.vehicle
+        return listOf("== A 车况（ECARX，与 HUD 相同的读取） ==") + feed.statusLines().map { "  $it" } +
+            feed.signalLines(VEHICLE_ROWS).map { "  $it" } +
+            listOf("  （✓ 已实车确认 · ? 原值待确认，HUD 不显示 · ✗ 读不到）", "")
+    }
+
     private inline fun safeLines(title: String, block: () -> List<String>): List<String> = try {
         block()
     } catch (error: Exception) {
@@ -413,7 +420,7 @@ class ProbeRunner(private val context: Context) {
             "android.permission.INTERNET",
             "android.permission.ACCESS_NETWORK_STATE",
             "android.permission.POST_NOTIFICATIONS",
-        ) + CarProps.PERMISSIONS
+        ) + VehiclePermissions.PERMISSIONS
         private val MUSIC_HINTS = listOf("music", "kugou", "kuwo", "netease", "ximalaya", "media")
         private val LYRIC_HINTS = Regex("(?i)lyric|lrc|geci|cluster|hud|meter|dashboard|instrument|ipc|widget")
         private val MEDIA_DUMP_KEEP = Regex("(?i)package=|metadata|description=|lyric|lrc|state=PlaybackState|active=|sessions? stack|ownerUid|tag=")
